@@ -28,17 +28,25 @@ def print_keyboard_options():
     print("Q : Stop")
     click.secho("=====================================", fg="yellow")
 
+v_lin = 0.0
+omega = 0.0
+
+def update_base_velocity(sim: StretchMujocoSimulator):
+    """Update base velocity based on current v_lin and omega state"""
+    sim.set_base_velocity(v_lin, omega)
 
 def keyboard_control(key: str | None, sim: StretchMujocoSimulator):
-    # mobile base
+    global v_lin, omega
+    
+    # mobile base - update velocity state
     if key == "w":
-        sim.move_by(Actuators.base_translate, 0.07)
+        v_lin = 0.3
     elif key == "s":
-        sim.move_by(Actuators.base_translate, -0.07)
+        v_lin = -0.3
     elif key == "a":
-        sim.move_by(Actuators.base_rotate, 0.15)
+        omega = 1.0
     elif key == "d":
-        sim.move_by(Actuators.base_rotate, -0.15)
+        omega = -1.0
 
     # head
     elif key == "t":
@@ -88,8 +96,18 @@ def keyboard_control(key: str | None, sim: StretchMujocoSimulator):
 
 
 def keyboard_control_release(key: str | None, sim: StretchMujocoSimulator):
-    if key in ("w", "s", "a", "d"):
-        sim.set_base_velocity(0, 0)
+    global v_lin, omega
+    
+    if key == "w" and v_lin > 0:
+        v_lin = 0.0
+    elif key == "s" and v_lin < 0:
+        v_lin = 0.0
+    elif key == "a" and omega > 0:
+        omega = 0.0
+    elif key == "d" and omega < 0:
+        omega = 0.0
+    
+    update_base_velocity(sim)
 
 
 # Allow multiple key-presses, references https://stackoverflow.com/a/74910695
@@ -164,6 +182,9 @@ def main(scene_xml_path: str|None, robocasa_env: bool, imagery_nav: bool, imager
             for key in key_buffer:
                 if isinstance(key, keyboard.KeyCode):
                     keyboard_control(key.char, sim)
+            
+            # Update base velocity based on current key state
+            update_base_velocity(sim)
 
             if not lidar and not use_imagery:
                 sleep(0.05)
