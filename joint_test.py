@@ -2,15 +2,14 @@
 Example script showing cross-platform robot control.
 Works in both simulation and physical environments!
 """
-from stretch_toolkit import controller, teleop, StateController, merge_proportional, BACKEND_NAME
+from stretch_toolkit import controller, teleop, BACKEND_NAME
 import time
 
 print(f"\n=== Running on {BACKEND_NAME} backend ===\n")
 
 def teleop_demo():
-    """Run teleoperation loop with automatic lift control."""
+    """Run teleoperation loop."""
     print("Teleop demo started. Use gamepad/keyboard to control.")
-    print("Lift will automatically move between 0.2m and 1.0m")
     print("Press Ctrl+C to stop\n")
     
     # State tracking for printing changes
@@ -18,36 +17,16 @@ def teleop_demo():
     last_print_time = time.time()
     
     # Thresholds for significant change
-    POSITION_THRESHOLD = 0.05  # meters or radians
+    POSITION_THRESHOLD = 0.01  # meters or radians
     PRINT_INTERVAL = 0.5  # seconds
-    
-    # Automatic lift control targets
-    lift_target = 1.0  # Start by moving to 1.0m
-    LIFT_LOW = 0.2
-    LIFT_HIGH = 1.0
-    
-    # Create StateController for lift (will be updated in loop)
-    lift_state_ctrl = StateController(controller, {"lift": lift_target})
     
     try:
         while True:
-            # Get normalized velocities from input devices (primary)
-            teleop_cmd = teleop.get_normalized_velocities()
-            
-            # Check if lift reached target and switch if needed
-            if lift_state_ctrl.is_at_goal():
-                lift_target = LIFT_LOW if lift_target == LIFT_HIGH else LIFT_HIGH
-                lift_state_ctrl = StateController(controller, {"lift": lift_target})
-                print(f"\n[AUTO] Lift target switched to {lift_target}m")
-            
-            # Get automatic lift command (secondary)
-            auto_cmd = lift_state_ctrl.get_command()
-            
-            # Merge commands: teleop (primary) can override auto (secondary)
-            final_cmd = merge_proportional(teleop_cmd, auto_cmd)
+            # Get normalized velocities from input devices
+            velocities = teleop.get_normalized_velocities()
             
             # Send to robot (physical or simulated)
-            controller.set_velocities(final_cmd)
+            controller.set_velocities(velocities)
             
             # Periodically print joint changes
             current_time = time.time()
@@ -71,10 +50,7 @@ def teleop_demo():
                     if changed_joints:
                         print(f"\n[{current_time - last_print_time:.1f}s] Joint changes:")
                         for joint, change in changed_joints.items():
-                            status = ""
-                            if joint == 'lift_up':
-                                status = f" [Target: {lift_target:.2f}m]"
-                            print(f"  {joint:30s}: {change['from']:+7.4f} → {change['to']:+7.4f} (Δ {change['delta']:+7.4f}){status}")
+                            print(f"  {joint:30s}: {change['from']:+7.4f} → {change['to']:+7.4f} (Δ {change['delta']:+7.4f})")
                 
                 last_state = current_state
                 last_print_time = current_time

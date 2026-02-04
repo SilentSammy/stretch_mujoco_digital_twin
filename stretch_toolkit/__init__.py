@@ -37,9 +37,10 @@ else:
 print(f"[stretch_toolkit] Loading {BACKEND_NAME} backend")
 
 # Import base classes (always available)
-from .base import TeleopProvider, JointController
+from .base import TeleopProvider, JointController, merge_proportional
 
-# Import and instantiate appropriate backend
+# Import state control
+from .state_control import StateController
 if USE_PHYSICAL:
     try:
         from .physical import PhysicalJointController
@@ -93,6 +94,8 @@ __all__ = [
     'teleop',
     'TeleopProvider',
     'JointController',
+    'StateController',
+    'merge_proportional',
     'USE_PHYSICAL',
     'BACKEND_NAME',
 ]

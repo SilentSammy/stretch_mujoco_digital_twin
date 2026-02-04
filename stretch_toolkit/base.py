@@ -1,7 +1,6 @@
 """Base classes for robot control - environment agnostic."""
 from . import input as ci
 
-
 class TeleopProvider:
     """Provides teleoperation commands as normalized joint velocities."""
     def __init__(self, is_stretch_env=False):
@@ -18,15 +17,15 @@ class TeleopProvider:
             'base_forward': ('w', 's', 'LY'),           # Left stick Y
             'base_counterclockwise': ('d', 'a', 'LX'), # Left stick X
             'lift_up': ('z', 'x', 'RY'),               # Right stick Y
-            'arm_out': ('c', 'v', 'RX'),               # Right stick X
-            'wrist_yaw_counterclockwise': (None, None, 'RB', 'LB'),  # Gamepad only
-            'gripper_open': (None, None, 'B', 'A'),                  # Gamepad only
+            'arm_out': ('v', 'c', 'RX'),               # Right stick X
+            'gripper_open': ('m', 'n', 'B', 'A'),                    # m=open, n=close
         }
         
         # D-pad mappings for wrist control
         self.dpad_wrist_mappings = {
-            'wrist_roll_counterclockwise': (None, None, None, 'DPAD_X'),
-            'wrist_pitch_up': (None, None, None, 'DPAD_Y'),
+            'wrist_yaw_counterclockwise': ('l', 'j', 'RB', 'LB'),  # Gamepad only
+            'wrist_roll_counterclockwise': ('u', 'o', None, 'DPAD_X'),  # o=CCW, l=CW
+            'wrist_pitch_up': ('i', 'k', None, 'DPAD_Y'),               # i=up, k=down
             'head_pan_counterclockwise': (),
             'head_tilt_up': (),
         }
@@ -35,8 +34,8 @@ class TeleopProvider:
         self.dpad_head_mappings = {
             'wrist_roll_counterclockwise': (),
             'wrist_pitch_up': (),
-            'head_pan_counterclockwise': (None, None, 'DPAD_X'),
-            'head_tilt_up': (None, None, None, 'DPAD_Y'),
+            'head_pan_counterclockwise': ('l', 'j', 'DPAD_X'),   # o=CCW, l=CW
+            'head_tilt_up': ('i', 'k', None, 'DPAD_Y'),          # i=up, k=down
         }
         
         self.joint_mappings = {}
@@ -100,7 +99,7 @@ class TeleopProvider:
     def _check_toggles(self):
         """Check for toggle button presses and update states."""
         # X button toggles D-pad control mode
-        if self._button_pressed('X'):
+        if self._button_pressed('X') or self._button_pressed('h'):
             self.dpad_controls_head = not self.dpad_controls_head
             mode = "HEAD" if self.dpad_controls_head else "WRIST"
             print(f"D-pad now controls: {mode}")
@@ -119,7 +118,6 @@ class TeleopProvider:
         for joint, mapping in self.joint_mappings.items():
             result[joint] = self._get_joint_velocity(mapping)
         return result
-
 
 class JointController:
     """Base class for joint controllers."""
@@ -146,3 +144,40 @@ class JointController:
     def stop(self):
         """Stop all robot motion."""
         raise NotImplementedError("Subclasses must implement stop()")
+
+def merge_proportional(cmd_primary, cmd_secondary, deadband=0.05):
+    """Merge two command dictionaries with proportional blending.
+    
+    Primary command overrides secondary based on input magnitude.
+    When primary input is below deadband, secondary is used.
+    Otherwise, primary input strength determines blend between secondary and full output.
+    
+    Args:
+        cmd_primary: Primary command dict (e.g., from teleop)
+        cmd_secondary: Secondary command dict (e.g., from autonomous controller)
+        deadband: Threshold below which primary is considered inactive (default 0.05)
+    
+    Returns:
+        dict: Merged command with proportional blending
+    """
+    cmd_final = {}
+    
+    # Handle all joints from both commands
+    all_joints = set(cmd_primary.keys()) | set(cmd_secondary.keys())
+    
+    for joint in all_joints:
+        primary_input = cmd_primary.get(joint, 0.0)
+        secondary_input = cmd_secondary.get(joint, 0.0)
+        
+        if abs(primary_input) < deadband:
+            # No primary input - use secondary
+            cmd_final[joint] = secondary_input
+        else:
+            # Primary input interpolates between secondary and desired value
+            # abs(primary_input) determines how much override (0 to 1)
+            # sign(primary_input) determines direction
+            override_strength = abs(primary_input)
+            desired_value = 1.0 if primary_input > 0 else -1.0
+            cmd_final[joint] = (1 - override_strength) * secondary_input + override_strength * desired_value
+    
+    return cmd_final
