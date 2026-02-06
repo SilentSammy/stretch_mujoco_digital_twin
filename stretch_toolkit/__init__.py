@@ -89,8 +89,12 @@ if not USE_PHYSICAL:
             _sim = StretchMujocoSimulator(cameras_to_use=[])
             _sim.start()
             _controller = SimulatedJointController(sim=_sim)
+            
+            # Start camera watchdog thread
+            from . import sim
+            sim._start_watchdog()
+            
             print("[stretch_toolkit] MuJoCo simulation initialized (no cameras for performance)")
-            print("[stretch_toolkit] To enable cameras, reinitialize with desired camera list")
         return _controller
     
     # Create a proxy object that initializes on first use

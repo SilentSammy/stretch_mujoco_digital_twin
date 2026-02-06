@@ -73,7 +73,10 @@ def teleop_demo():
             # Close windows that should no longer be displayed
             windows_to_close = open_windows - active_windows
             for window_name in windows_to_close:
-                cv2.destroyWindow(window_name)
+                try:
+                    cv2.destroyWindow(window_name)
+                except:
+                    pass  # Silently handle window destruction errors
             open_windows = active_windows
             
             cv2.waitKey(1)

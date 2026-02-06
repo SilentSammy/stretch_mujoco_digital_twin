@@ -1,5 +1,6 @@
 """Simulated robot implementation - placeholder for simulation backends."""
 import time
+import threading
 import numpy as np
 from .base import JointController, CamInfo, DepthCamInfo
 from stretch_mujoco import StretchMujocoSimulator
@@ -211,12 +212,73 @@ class SimulatedJointController(JointController):
         self.sim.set_base_velocity(0.0, 0.0)
 
 
+# Camera watchdog system - auto-deregister unused cameras
+_camera_last_access = {}  # Track last access time for each camera
+CAMERA_TIMEOUT_MS = 1000  # Deregister if not accessed for this time (ms)
+_watchdog_thread = None
+_watchdog_running = False
+
+
+def _watchdog_loop():
+    """Background thread that monitors and cleans up stale cameras."""
+    from . import _sim
+    global _watchdog_running, _camera_last_access
+    
+    while _watchdog_running:
+        time.sleep(0.05)  # Check every 50ms
+        
+        if _sim is None:
+            continue
+        
+        current_time = time.perf_counter()
+        
+        # Check each tracked camera
+        cameras_to_remove = []
+        for camera, last_access in list(_camera_last_access.items()):
+            time_since_access = (current_time - last_access) * 1000  # Convert to ms
+            if time_since_access > CAMERA_TIMEOUT_MS:
+                cameras_to_remove.append(camera)
+        
+        # Deregister stale cameras
+        for camera in cameras_to_remove:
+            try:
+                _sim.remove_camera(camera)
+                del _camera_last_access[camera]
+            except:
+                pass
+
+
+def _start_watchdog():
+    """Start the camera watchdog thread."""
+    global _watchdog_thread, _watchdog_running
+    
+    if _watchdog_thread is None or not _watchdog_thread.is_alive():
+        _watchdog_running = True
+        _watchdog_thread = threading.Thread(target=_watchdog_loop, daemon=True)
+        _watchdog_thread.start()
+
+
+def _stop_watchdog():
+    """Stop the camera watchdog thread."""
+    global _watchdog_running
+    _watchdog_running = False
+
+
+def _mark_camera_accessed(camera):
+    """Mark a camera as recently accessed."""
+    global _camera_last_access
+    _camera_last_access[camera] = time.perf_counter()
+
+
 # Frame getter functions for simulation cameras
 def _get_head_rgb_frame():
     """Get head RGB camera frame from simulation."""
     from . import _sim
     if _sim is None:
         return None
+    
+    # Mark camera as accessed (for watchdog)
+    _mark_camera_accessed(StretchCameras.cam_d435i_rgb)
     
     # Auto-register camera on first call
     if StretchCameras.cam_d435i_rgb not in _sim.get_active_cameras():
@@ -225,7 +287,17 @@ def _get_head_rgb_frame():
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d435i_rgb)
+        frame = all_frames.get(StretchCameras.cam_d435i_rgb)
+        
+        # If frame is None, camera might not be ready yet - try one more time
+        if frame is None:
+            import time
+            time.sleep(0.05)
+            camera_data = _sim.pull_camera_data()
+            all_frames = camera_data.get_all(use_depth_color_map=False)
+            frame = all_frames.get(StretchCameras.cam_d435i_rgb)
+        
+        return frame
     except:
         return None
 
@@ -236,6 +308,9 @@ def _get_head_depth_frame():
     if _sim is None:
         return None
     
+    # Mark camera as accessed (for watchdog)
+    _mark_camera_accessed(StretchCameras.cam_d435i_depth)
+    
     # Auto-register camera on first call
     if StretchCameras.cam_d435i_depth not in _sim.get_active_cameras():
         _sim.add_camera(StretchCameras.cam_d435i_depth)
@@ -243,7 +318,17 @@ def _get_head_depth_frame():
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d435i_depth)
+        frame = all_frames.get(StretchCameras.cam_d435i_depth)
+        
+        # If frame is None, camera might not be ready yet - try one more time
+        if frame is None:
+            import time
+            time.sleep(0.05)
+            camera_data = _sim.pull_camera_data()
+            all_frames = camera_data.get_all(use_depth_color_map=False)
+            frame = all_frames.get(StretchCameras.cam_d435i_depth)
+        
+        return frame
     except:
         return None
 
@@ -254,6 +339,9 @@ def _get_wrist_rgb_frame():
     if _sim is None:
         return None
     
+    # Mark camera as accessed (for watchdog)
+    _mark_camera_accessed(StretchCameras.cam_d405_rgb)
+    
     # Auto-register camera on first call
     if StretchCameras.cam_d405_rgb not in _sim.get_active_cameras():
         _sim.add_camera(StretchCameras.cam_d405_rgb)
@@ -261,7 +349,17 @@ def _get_wrist_rgb_frame():
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d405_rgb)
+        frame = all_frames.get(StretchCameras.cam_d405_rgb)
+        
+        # If frame is None, camera might not be ready yet - try one more time
+        if frame is None:
+            import time
+            time.sleep(0.05)
+            camera_data = _sim.pull_camera_data()
+            all_frames = camera_data.get_all(use_depth_color_map=False)
+            frame = all_frames.get(StretchCameras.cam_d405_rgb)
+        
+        return frame
     except:
         return None
 
@@ -272,6 +370,9 @@ def _get_wrist_depth_frame():
     if _sim is None:
         return None
     
+    # Mark camera as accessed (for watchdog)
+    _mark_camera_accessed(StretchCameras.cam_d405_depth)
+    
     # Auto-register camera on first call
     if StretchCameras.cam_d405_depth not in _sim.get_active_cameras():
         _sim.add_camera(StretchCameras.cam_d405_depth)
@@ -279,7 +380,17 @@ def _get_wrist_depth_frame():
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d405_depth)
+        frame = all_frames.get(StretchCameras.cam_d405_depth)
+        
+        # If frame is None, camera might not be ready yet - try one more time
+        if frame is None:
+            import time
+            time.sleep(0.05)
+            camera_data = _sim.pull_camera_data()
+            all_frames = camera_data.get_all(use_depth_color_map=False)
+            frame = all_frames.get(StretchCameras.cam_d405_depth)
+        
+        return frame
     except:
         return None
 
@@ -290,6 +401,9 @@ def _get_nav_cam_frame():
     if _sim is None:
         return None
     
+    # Mark camera as accessed (for watchdog)
+    _mark_camera_accessed(StretchCameras.cam_nav_rgb)
+    
     # Auto-register camera on first call
     if StretchCameras.cam_nav_rgb not in _sim.get_active_cameras():
         _sim.add_camera(StretchCameras.cam_nav_rgb)
@@ -297,7 +411,17 @@ def _get_nav_cam_frame():
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_nav_rgb)
+        frame = all_frames.get(StretchCameras.cam_nav_rgb)
+        
+        # If frame is None, camera might not be ready yet - try one more time
+        if frame is None:
+            import time
+            time.sleep(0.05)
+            camera_data = _sim.pull_camera_data()
+            all_frames = camera_data.get_all(use_depth_color_map=False)
+            frame = all_frames.get(StretchCameras.cam_nav_rgb)
+        
+        return frame
     except:
         return None
 
