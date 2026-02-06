@@ -1,6 +1,223 @@
 """Base classes for robot control - environment agnostic."""
 from . import input as ci
 
+import numpy as np
+import math
+
+class CamInfo:
+    """Base class for camera configuration with intrinsics and projection methods."""
+    
+    def __init__(self, name, camera_matrix=None, distortion_coeffs=None, distortion_model=None):
+        """
+        Args:
+            name: Camera identifier (e.g., "D435i Head")
+            camera_matrix: 3x3 numpy array with camera intrinsics (optional)
+            distortion_coeffs: Camera distortion coefficients (optional)
+            distortion_model: Camera distortion model type (optional)
+        """
+        self.name = name
+        self.camera_matrix = camera_matrix
+        self.distortion_coeffs = distortion_coeffs
+        self.distortion_model = distortion_model
+    
+    @property
+    def has_intrinsics(self):
+        """Check if camera intrinsics are available."""
+        return self.camera_matrix is not None
+    
+    @property
+    def fx(self):
+        if not self.has_intrinsics:
+            raise ValueError(f"Camera '{self.name}' has no intrinsics configured")
+        return self.camera_matrix[0, 0]
+    
+    @property
+    def fy(self):
+        if not self.has_intrinsics:
+            raise ValueError(f"Camera '{self.name}' has no intrinsics configured")
+        return self.camera_matrix[1, 1]
+    
+    @property
+    def cx(self):
+        if not self.has_intrinsics:
+            raise ValueError(f"Camera '{self.name}' has no intrinsics configured")
+        return self.camera_matrix[0, 2]
+    
+    @property
+    def cy(self):
+        if not self.has_intrinsics:
+            raise ValueError(f"Camera '{self.name}' has no intrinsics configured")
+        return self.camera_matrix[1, 2]
+    
+    def pixel_to_normalized(self, centroid):
+        """Convert pixel coordinates to normalized camera coordinates.
+        
+        Args:
+            centroid: (x, y) pixel coordinates
+        
+        Returns:
+            (x_norm, y_norm): Normalized coordinates where z=1 in camera frame
+        """
+        if not self.has_intrinsics:
+            raise ValueError(f"Camera '{self.name}' requires intrinsics for pixel_to_normalized")
+        
+        x_norm = (centroid[0] - self.cx) / self.fx
+        y_norm = (centroid[1] - self.cy) / self.fy
+        
+        return x_norm, y_norm
+    
+    def pixel_to_object_angles(self, centroid):
+        """Convert pixel to angular position (pitch, yaw) in degrees relative to camera.
+        
+        Args:
+            centroid: (x, y) pixel coordinates
+        
+        Returns:
+            (pitch, yaw): Angular position in degrees
+        """
+        x_norm, y_norm = self.pixel_to_normalized(centroid)
+        
+        yaw_rad = math.atan(x_norm)
+        pitch_rad = math.atan(y_norm)
+        
+        return math.degrees(pitch_rad), math.degrees(yaw_rad)
+    
+    def object_angles_to_pixel(self, yaw, pitch):
+        """Convert angular position (yaw, pitch) to pixel coordinates.
+        
+        Args:
+            yaw: Yaw angle in degrees
+            pitch: Pitch angle in degrees
+        
+        Returns:
+            (x, y): Pixel coordinates
+        """
+        if not self.has_intrinsics:
+            raise ValueError(f"Camera '{self.name}' requires intrinsics for object_angles_to_pixel")
+        
+        yaw_rad = math.radians(yaw)
+        pitch_rad = math.radians(pitch)
+        
+        x_norm = math.tan(yaw_rad)
+        y_norm = math.tan(pitch_rad)
+        
+        x = x_norm * self.fx + self.cx
+        y = y_norm * self.fy + self.cy
+        
+        return x, y
+
+
+class RGBCamInfo(CamInfo):
+    """Camera configuration for RGB-only cameras with optional intrinsics."""
+    
+    def __init__(self, name, frame_getter, camera_matrix=None,
+                 distortion_coeffs=None, distortion_model=None):
+        """
+        Args:
+            name: Camera identifier (e.g., "OV9782 Navigation")
+            frame_getter: Function that returns rgb_frame (single frame, not tuple)
+            camera_matrix: 3x3 numpy array with camera intrinsics (optional)
+            distortion_coeffs: Camera distortion coefficients (optional)
+            distortion_model: Camera distortion model type (optional)
+        """
+        super().__init__(name, camera_matrix, distortion_coeffs, distortion_model)
+        self.get_frame = frame_getter
+
+
+class DepthCamInfo(CamInfo):
+    """Camera configuration for depth cameras with intrinsics and frame getter."""
+    
+    def __init__(self, name, frame_getter, camera_matrix, depth_scale,
+                 distortion_coeffs=None, distortion_model=None,
+                 depth_camera_matrix=None, depth_distortion_coeffs=None, depth_distortion_model=None):
+        """
+        Args:
+            name: Camera identifier (e.g., "D435i Head", "D405 Wrist")
+            frame_getter: Function that returns (rgb_frame, depth_frame) tuple
+            camera_matrix: 3x3 numpy array with RGB camera intrinsics
+            depth_scale: Meters per depth unit (e.g., 1e-03 for D435i)
+            distortion_coeffs: RGB camera distortion coefficients (optional)
+            distortion_model: RGB camera distortion model type (optional)
+            depth_camera_matrix: 3x3 numpy array with depth camera intrinsics (optional, defaults to camera_matrix)
+            depth_distortion_coeffs: Depth camera distortion coefficients (optional)
+            depth_distortion_model: Depth camera distortion model type (optional)
+        """
+        super().__init__(name, camera_matrix, distortion_coeffs, distortion_model)
+        self.get_frames = frame_getter
+        self.depth_scale = depth_scale
+        
+        # Depth camera intrinsics (may differ from RGB)
+        self.depth_camera_matrix = depth_camera_matrix if depth_camera_matrix is not None else camera_matrix
+        self.depth_distortion_coeffs = depth_distortion_coeffs
+        self.depth_distortion_model = depth_distortion_model
+    
+    @property
+    def depth_fx(self):
+        return self.depth_camera_matrix[0, 0]
+    
+    @property
+    def depth_fy(self):
+        return self.depth_camera_matrix[1, 1]
+    
+    @property
+    def depth_cx(self):
+        return self.depth_camera_matrix[0, 2]
+    
+    @property
+    def depth_cy(self):
+        return self.depth_camera_matrix[1, 2]
+
+    def get_depth(self, centroid, depth_image, sample_radius=None):
+        """Get distance to object in meters using depth camera intrinsics.
+        
+        Projects RGB pixel coordinate to depth camera coordinate system,
+        then samples depth values around that location.
+        
+        Args:
+            centroid: (x, y) pixel coordinates in RGB frame
+            depth_image: Depth image array
+            sample_radius: Radius in pixels to sample around centroid (default: 3)
+            visualize: If True, show debug visualization of depth sampling (default: False)
+        
+        Returns:
+            Median distance in meters, or None if no valid depth samples
+        """
+        if sample_radius is None:
+            sample_radius = 3
+        
+        # Project RGB pixel to depth camera coordinate system
+        # 1. Convert RGB pixel to normalized coordinates
+        x_norm = (centroid[0] - self.cx) / self.fx
+        y_norm = (centroid[1] - self.cy) / self.fy
+        
+        # 2. Project to depth camera pixel coordinates
+        depth_x = x_norm * self.depth_fx + self.depth_cx
+        depth_y = y_norm * self.depth_fy + self.depth_cy
+        
+        x, y = int(depth_x), int(depth_y)
+        height, width = depth_image.shape[:2]
+        
+        # Collect depth samples in a square region
+        samples = []
+        for dy in range(-sample_radius, sample_radius + 1):
+            for dx in range(-sample_radius, sample_radius + 1):
+                # Clamp to image bounds
+                px = max(0, min(width - 1, x + dx))
+                py = max(0, min(height - 1, y + dy))
+                
+                depth_value = depth_image[py, px]
+                if depth_value > 0:  # Only include valid depth values
+                    samples.append(depth_value)
+        
+        if not samples:
+            return None
+        
+        # Use median to reduce noise
+        median_depth = np.median(samples)
+        
+        return median_depth * self.depth_scale
+
+
 class TeleopProvider:
     """Provides teleoperation commands as normalized joint velocities."""
     def __init__(self, is_stretch_env=False):
@@ -119,6 +336,7 @@ class TeleopProvider:
             result[joint] = self._get_joint_velocity(mapping)
         return result
 
+
 class JointController:
     """Base class for joint controllers."""
     def set_velocities(self, vel_dict):
@@ -144,6 +362,7 @@ class JointController:
     def stop(self):
         """Stop all robot motion."""
         raise NotImplementedError("Subclasses must implement stop()")
+
 
 def merge_proportional(cmd_primary, cmd_secondary, deadband=0.05):
     """Merge two command dictionaries with proportional blending.

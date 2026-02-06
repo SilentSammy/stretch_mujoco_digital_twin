@@ -36,7 +36,7 @@ def my_control_loop():
 if __name__ == "__main__":
     # You can use all the camera's, but it takes longer to render, and may affect the overall simulation FPS.
     # cameras_to_use = StretchCameras.all()
-    cameras_to_use = [StretchCameras.cam_d405_rgb]
+    cameras_to_use = [StretchCameras.cam_d405_rgb, StretchCameras.cam_d405_depth]
 
     sim = StretchMujocoSimulator(cameras_to_use=cameras_to_use)
 

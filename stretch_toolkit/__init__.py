@@ -43,7 +43,7 @@ from .base import TeleopProvider, JointController, merge_proportional
 from .state_control import StateController
 if USE_PHYSICAL:
     try:
-        from .physical import PhysicalJointController
+        from .physical import PhysicalJointController, HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA
         import stretch_body.robot as rb
         
         # Create robot instance
@@ -62,8 +62,9 @@ if USE_PHYSICAL:
         USE_PHYSICAL = False
 
 if not USE_PHYSICAL:
-    from .sim import SimulatedJointController
+    from .sim import SimulatedJointController, HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA
     from stretch_mujoco import StretchMujocoSimulator
+    from stretch_mujoco.enums.stretch_cameras import StretchCameras
     
     # Lazy initialization - only create sim when first accessed
     _sim = None
@@ -72,10 +73,14 @@ if not USE_PHYSICAL:
     def _get_controller():
         global _sim, _controller
         if _controller is None:
-            _sim = StretchMujocoSimulator()
+            # Initialize with NO cameras by default (better performance)
+            # Users can explicitly enable cameras if needed
+            # _sim = StretchMujocoSimulator(cameras_to_use=[StretchCameras.cam_d405_rgb, StretchCameras.cam_d405_depth])
+            _sim = StretchMujocoSimulator(cameras_to_use=[StretchCameras.cam_nav_rgb])
             _sim.start()
             _controller = SimulatedJointController(sim=_sim)
-            print("[stretch_toolkit] MuJoCo simulation initialized and running")
+            print("[stretch_toolkit] MuJoCo simulation initialized (no cameras for performance)")
+            print("[stretch_toolkit] To enable cameras, reinitialize with desired camera list")
         return _controller
     
     # Create a proxy object that initializes on first use
@@ -98,4 +103,7 @@ __all__ = [
     'merge_proportional',
     'USE_PHYSICAL',
     'BACKEND_NAME',
+    'HEAD_CAMERA',
+    'WRIST_CAMERA',
+    'NAVIGATION_CAMERA',
 ]

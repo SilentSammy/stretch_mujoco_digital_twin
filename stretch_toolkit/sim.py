@@ -1,8 +1,10 @@
 """Simulated robot implementation - placeholder for simulation backends."""
 import time
-from .base import JointController
+import numpy as np
+from .base import JointController, DepthCamInfo, RGBCamInfo
 from stretch_mujoco import StretchMujocoSimulator
 from stretch_mujoco.enums.actuators import Actuators
+from stretch_mujoco.enums.stretch_cameras import StretchCameras
 
 
 class SimulatedJointController(JointController):
@@ -207,3 +209,100 @@ class SimulatedJointController(JointController):
     def stop(self):
         """Stop the simulated robot."""
         self.sim.set_base_velocity(0.0, 0.0)
+
+
+# Frame getter functions for simulation cameras
+def _get_head_cam_frames():
+    """Get head camera frames from simulation."""
+    # This will be called by camera system - needs access to global sim instance
+    from . import _sim
+    if _sim is None:
+        return None, None
+    try:
+        camera_data = _sim.pull_camera_data()
+        all_frames = camera_data.get_all(use_depth_color_map=False)
+        rgb = all_frames.get(StretchCameras.cam_d435i_rgb)
+        depth = all_frames.get(StretchCameras.cam_d435i_depth)
+        return rgb, depth
+    except:
+        return None, None
+
+
+def _get_wrist_cam_frames():
+    """Get wrist camera frames from simulation."""
+    from . import _sim
+    if _sim is None:
+        return None, None
+    try:
+        camera_data = _sim.pull_camera_data()
+        all_frames = camera_data.get_all(use_depth_color_map=False)
+        rgb = all_frames.get(StretchCameras.cam_d405_rgb)
+        depth = all_frames.get(StretchCameras.cam_d405_depth)
+        return rgb, depth
+    except:
+        return None, None
+
+
+def _get_nav_cam_frame():
+    """Get navigation camera frame from simulation."""
+    from . import _sim
+    if _sim is None:
+        return None
+    try:
+        camera_data = _sim.pull_camera_data()
+        all_frames = camera_data.get_all(use_depth_color_map=False)
+        rgb = all_frames.get(StretchCameras.cam_nav_rgb)
+        return rgb
+    except:
+        return None
+
+
+# Camera instances for simulated robot
+# D435i head camera (simulated)
+HEAD_CAMERA = DepthCamInfo(
+    name="D435i Head (Sim)",
+    frame_getter=_get_head_cam_frames,
+    camera_matrix=np.array([
+        [303.07223511, 0.0,         122.78679657],
+        [0.0,          303.06060791, 210.94392395],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_scale=1e-03,
+    distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    distortion_model="inverse_brown_conrady",
+    depth_camera_matrix=np.array([
+        [214.76873779, 0.0,         120.41242218],
+        [0.0,          214.76873779, 209.7878418],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    depth_distortion_model="brown_conrady"
+)
+
+# D405 wrist camera (simulated)
+WRIST_CAMERA = DepthCamInfo(
+    name="D405 Wrist (Sim)",
+    frame_getter=_get_wrist_cam_frames,
+    camera_matrix=np.array([
+        [385.62329102, 0.0,         314.58789062],
+        [0.0,          385.1807251,  243.30551147],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_scale=1e-04,
+    distortion_coeffs=np.array([-5.52569292e-02, 5.98766357e-02, -8.58005136e-04,
+                                 -9.32277253e-05, -1.93387289e-02]),
+    distortion_model="inverse_brown_conrady",
+    depth_camera_matrix=np.array([
+        [378.52832031, 0.0,         318.47045898],
+        [0.0,          378.52832031, 241.03790283],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    depth_distortion_model="brown_conrady"
+)
+
+# OV9782 navigation camera (simulated)
+NAVIGATION_CAMERA = RGBCamInfo(
+    name="OV9782 Navigation (Sim)",
+    frame_getter=_get_nav_cam_frame,
+)
