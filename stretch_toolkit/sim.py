@@ -248,6 +248,15 @@ def _get_nav_cam_frame():
     from . import _sim
     if _sim is None:
         return None
+    
+    # Auto-register camera on first call (for testing dynamic camera management)
+    if StretchCameras.cam_nav_rgb not in _sim.get_active_cameras():
+        print("[sim.py] Auto-registering navigation camera...")
+        _sim.add_camera(StretchCameras.cam_nav_rgb)
+        # Give it a moment to initialize
+        import time
+        time.sleep(0.1)
+    
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)

@@ -22,6 +22,7 @@ from stretch_mujoco.mujoco_server_managed import MujocoServerManaged
 from stretch_mujoco.mujoco_server_passive import MujocoServerPassive
 from stretch_mujoco.datamodels.status_command import (
     CommandBaseVelocity,
+    CommandCameraManagement,
     CommandCoordinateFrameArrowsViz,
     CommandKeyframe,
     CommandMove,
@@ -453,6 +454,55 @@ class StretchMujocoSimulator:
                 CommandCoordinateFrameArrowsViz(position=position, rotation=rotation, trigger=True)
             )
             self.data_proxies.set_command(command)
+
+    @require_connection
+    def add_camera(self, camera: StretchCameras) -> None:
+        """
+        Dynamically add a camera to the running simulator.
+        
+        Args:
+            camera: StretchCameras enum value for the camera to add
+        """
+        with self._command_lock:
+            self.data_proxies.set_command(
+                StatusCommand(camera_management=CommandCameraManagement(
+                    camera_name=camera.name,
+                    action="add",
+                    trigger=True
+                ))
+            )
+        # Update local tracking
+        if camera not in self._cameras_to_use:
+            self._cameras_to_use.append(camera)
+
+    @require_connection
+    def remove_camera(self, camera: StretchCameras) -> None:
+        """
+        Dynamically remove a camera from the running simulator.
+        
+        Args:
+            camera: StretchCameras enum value for the camera to remove
+        """
+        with self._command_lock:
+            self.data_proxies.set_command(
+                StatusCommand(camera_management=CommandCameraManagement(
+                    camera_name=camera.name,
+                    action="remove",
+                    trigger=True
+                ))
+            )
+        # Update local tracking
+        if camera in self._cameras_to_use:
+            self._cameras_to_use.remove(camera)
+
+    def get_active_cameras(self) -> list[StretchCameras]:
+        """
+        Get the list of currently active cameras.
+        
+        Returns:
+            List of StretchCameras enum values for cameras currently rendering
+        """
+        return self._cameras_to_use.copy()
 
     @require_connection
     def get_base_pose(self):

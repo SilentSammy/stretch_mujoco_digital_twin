@@ -76,7 +76,7 @@ if not USE_PHYSICAL:
             # Initialize with NO cameras by default (better performance)
             # Users can explicitly enable cameras if needed
             # _sim = StretchMujocoSimulator(cameras_to_use=[StretchCameras.cam_d405_rgb, StretchCameras.cam_d405_depth])
-            _sim = StretchMujocoSimulator(cameras_to_use=[StretchCameras.cam_nav_rgb])
+            _sim = StretchMujocoSimulator(cameras_to_use=[])
             _sim.start()
             _controller = SimulatedJointController(sim=_sim)
             print("[stretch_toolkit] MuJoCo simulation initialized (no cameras for performance)")

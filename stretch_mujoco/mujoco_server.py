@@ -573,9 +573,40 @@ class MujocoServer:
             command_status.keyframe.trigger = False
             self.mjdata.ctrl = self.mjmodel.keyframe(command_status.keyframe.name).ctrl
 
+        # camera management
+        if command_status.camera_management is not None and command_status.camera_management.trigger:
+            command_status.camera_management.trigger = False
+            self._handle_camera_management(command_status.camera_management)
+
         self.base_controller.update()
 
         self.data_proxies.set_command(command_status)
+
+    def _handle_camera_management(self, cmd):
+        """Handle dynamic camera add/remove commands."""
+        from stretch_mujoco.enums.stretch_cameras import StretchCameras
+        
+        try:
+            camera = StretchCameras[cmd.camera_name]
+            
+            if cmd.action == "add":
+                if camera not in self.camera_manager.camera_renderers:
+                    self.camera_manager._add_camera_renderer(camera)
+                    print(f"[MujocoServer] Added camera: {camera.name}")
+                else:
+                    print(f"[MujocoServer] Camera {camera.name} already active")
+                    
+            elif cmd.action == "remove":
+                if camera in self.camera_manager.camera_renderers:
+                    self.camera_manager._remove_camera_renderer(camera)
+                    print(f"[MujocoServer] Removed camera: {camera.name}")
+                else:
+                    print(f"[MujocoServer] Camera {camera.name} not found")
+                    
+        except KeyError:
+            print(f"[MujocoServer] Invalid camera name: {cmd.camera_name}")
+        except Exception as e:
+            print(f"[MujocoServer] Error managing camera: {e}")
 
     def _to_sim_gripper_range(self, pos: float) -> float:
         """

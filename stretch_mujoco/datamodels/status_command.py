@@ -37,6 +37,14 @@ class CommandCoordinateFrameArrowsViz:
 
 
 @dataclass
+class CommandCameraManagement:
+    """Command to add or remove cameras dynamically."""
+    camera_name: str  # StretchCameras enum name as string
+    action: str  # "add" or "remove"
+    trigger: bool
+
+
+@dataclass
 class StatusCommand:
     """
     A dataclass to ferry movement commands to the Mujoco server.
@@ -47,6 +55,7 @@ class StatusCommand:
     base_velocity: CommandBaseVelocity = field(default_factory=lambda:CommandBaseVelocity(0, 0, False))
     keyframe: CommandKeyframe = field(default_factory=lambda:CommandKeyframe("", False))
     coordinate_frame_arrows_viz: list[CommandCoordinateFrameArrowsViz] = field(default_factory=list)
+    camera_management: CommandCameraManagement | None = None
 
 
 
