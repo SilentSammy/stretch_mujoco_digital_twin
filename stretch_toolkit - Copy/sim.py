@@ -1,7 +1,7 @@
 """Simulated robot implementation - placeholder for simulation backends."""
 import time
 import numpy as np
-from .base import JointController, CamInfo, DepthCamInfo
+from .base import JointController, DepthCamInfo, RGBCamInfo
 from stretch_mujoco import StretchMujocoSimulator
 from stretch_mujoco.enums.actuators import Actuators
 from stretch_mujoco.enums.stretch_cameras import StretchCameras
@@ -212,76 +212,35 @@ class SimulatedJointController(JointController):
 
 
 # Frame getter functions for simulation cameras
-def _get_head_rgb_frame():
-    """Get head RGB camera frame from simulation."""
+def _get_head_cam_frames():
+    """Get head camera frames from simulation."""
+    # This will be called by camera system - needs access to global sim instance
     from . import _sim
     if _sim is None:
-        return None
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d435i_rgb not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d435i_rgb)
-    
+        return None, None
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d435i_rgb)
+        rgb = all_frames.get(StretchCameras.cam_d435i_rgb)
+        depth = all_frames.get(StretchCameras.cam_d435i_depth)
+        return rgb, depth
     except:
-        return None
+        return None, None
 
 
-def _get_head_depth_frame():
-    """Get head depth camera frame from simulation."""
+def _get_wrist_cam_frames():
+    """Get wrist camera frames from simulation."""
     from . import _sim
     if _sim is None:
-        return None
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d435i_depth not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d435i_depth)
-    
+        return None, None
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d435i_depth)
+        rgb = all_frames.get(StretchCameras.cam_d405_rgb)
+        depth = all_frames.get(StretchCameras.cam_d405_depth)
+        return rgb, depth
     except:
-        return None
-
-
-def _get_wrist_rgb_frame():
-    """Get wrist RGB camera frame from simulation."""
-    from . import _sim
-    if _sim is None:
-        return None
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d405_rgb not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d405_rgb)
-    
-    try:
-        camera_data = _sim.pull_camera_data()
-        all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d405_rgb)
-    except:
-        return None
-
-
-def _get_wrist_depth_frame():
-    """Get wrist depth camera frame from simulation."""
-    from . import _sim
-    if _sim is None:
-        return None
-    
-    # Auto-register camera on first call
-    if StretchCameras.cam_d405_depth not in _sim.get_active_cameras():
-        _sim.add_camera(StretchCameras.cam_d405_depth)
-    
-    try:
-        camera_data = _sim.pull_camera_data()
-        all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_d405_depth)
-    except:
-        return None
+        return None, None
 
 
 def _get_nav_cam_frame():
@@ -290,14 +249,19 @@ def _get_nav_cam_frame():
     if _sim is None:
         return None
     
-    # Auto-register camera on first call
+    # Auto-register camera on first call (for testing dynamic camera management)
     if StretchCameras.cam_nav_rgb not in _sim.get_active_cameras():
+        print("[sim.py] Auto-registering navigation camera...")
         _sim.add_camera(StretchCameras.cam_nav_rgb)
+        # Give it a moment to initialize
+        import time
+        time.sleep(0.1)
     
     try:
         camera_data = _sim.pull_camera_data()
         all_frames = camera_data.get_all(use_depth_color_map=False)
-        return all_frames.get(StretchCameras.cam_nav_rgb)
+        rgb = all_frames.get(StretchCameras.cam_nav_rgb)
+        return rgb
     except:
         return None
 
@@ -306,68 +270,48 @@ def _get_nav_cam_frame():
 # D435i head camera (simulated)
 HEAD_CAMERA = DepthCamInfo(
     name="D435i Head (Sim)",
-    rgb_cam=CamInfo(
-        name="D435i RGB",
-        frame_getter=_get_head_rgb_frame,
-        camera_matrix=np.array([
-            [303.07223511, 0.0,         122.78679657],
-            [0.0,          303.06060791, 210.94392395],
-            [0.0,          0.0,          1.0]
-        ]),
-        distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
-        distortion_model="inverse_brown_conrady"
-    ),
-    depth_cam=CamInfo(
-        name="D435i Depth",
-        frame_getter=_get_head_depth_frame,
-        camera_matrix=np.array([
-            [214.76873779, 0.0,         120.41242218],
-            [0.0,          214.76873779, 209.7878418],
-            [0.0,          0.0,          1.0]
-        ]),
-        distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
-        distortion_model="brown_conrady"
-    ),
-    depth_scale=1e-03
+    frame_getter=_get_head_cam_frames,
+    camera_matrix=np.array([
+        [303.07223511, 0.0,         122.78679657],
+        [0.0,          303.06060791, 210.94392395],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_scale=1e-03,
+    distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    distortion_model="inverse_brown_conrady",
+    depth_camera_matrix=np.array([
+        [214.76873779, 0.0,         120.41242218],
+        [0.0,          214.76873779, 209.7878418],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    depth_distortion_model="brown_conrady"
 )
 
 # D405 wrist camera (simulated)
 WRIST_CAMERA = DepthCamInfo(
     name="D405 Wrist (Sim)",
-    rgb_cam=CamInfo(
-        name="D405 RGB",
-        frame_getter=_get_wrist_rgb_frame,
-        camera_matrix=np.array([
-            [385.62329102, 0.0,         314.58789062],
-            [0.0,          385.1807251,  243.30551147],
-            [0.0,          0.0,          1.0]
-        ]),
-        distortion_coeffs=np.array([-5.52569292e-02, 5.98766357e-02, -8.58005136e-04,
-                                     -9.32277253e-05, -1.93387289e-02]),
-        distortion_model="inverse_brown_conrady"
-    ),
-    depth_cam=CamInfo(
-        name="D405 Depth",
-        frame_getter=_get_wrist_depth_frame,
-        camera_matrix=np.array([
-            [378.52832031, 0.0,         318.47045898],
-            [0.0,          378.52832031, 241.03790283],
-            [0.0,          0.0,          1.0]
-        ]),
-        distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
-        distortion_model="brown_conrady"
-    ),
-    depth_scale=1e-04
+    frame_getter=_get_wrist_cam_frames,
+    camera_matrix=np.array([
+        [385.62329102, 0.0,         314.58789062],
+        [0.0,          385.1807251,  243.30551147],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_scale=1e-04,
+    distortion_coeffs=np.array([-5.52569292e-02, 5.98766357e-02, -8.58005136e-04,
+                                 -9.32277253e-05, -1.93387289e-02]),
+    distortion_model="inverse_brown_conrady",
+    depth_camera_matrix=np.array([
+        [378.52832031, 0.0,         318.47045898],
+        [0.0,          378.52832031, 241.03790283],
+        [0.0,          0.0,          1.0]
+    ]),
+    depth_distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    depth_distortion_model="brown_conrady"
 )
 
 # OV9782 navigation camera (simulated)
-NAVIGATION_CAMERA = CamInfo(
+NAVIGATION_CAMERA = RGBCamInfo(
     name="OV9782 Navigation (Sim)",
-    frame_getter=_get_nav_cam_frame
+    frame_getter=_get_nav_cam_frame,
 )
-
-# Individual camera feed exports
-HEAD_RGB_CAMERA = HEAD_CAMERA.rgb_cam
-HEAD_DEPTH_CAMERA = HEAD_CAMERA.depth_cam
-WRIST_RGB_CAMERA = WRIST_CAMERA.rgb_cam
-WRIST_DEPTH_CAMERA = WRIST_CAMERA.depth_cam

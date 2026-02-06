@@ -43,12 +43,7 @@ from .base import TeleopProvider, JointController, merge_proportional
 from .state_control import StateController
 if USE_PHYSICAL:
     try:
-        from .physical import (
-            PhysicalJointController, 
-            HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA,
-            HEAD_RGB_CAMERA, HEAD_DEPTH_CAMERA,
-            WRIST_RGB_CAMERA, WRIST_DEPTH_CAMERA
-        )
+        from .physical import PhysicalJointController, HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA
         import stretch_body.robot as rb
         
         # Create robot instance
@@ -67,12 +62,7 @@ if USE_PHYSICAL:
         USE_PHYSICAL = False
 
 if not USE_PHYSICAL:
-    from .sim import (
-        SimulatedJointController, 
-        HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA,
-        HEAD_RGB_CAMERA, HEAD_DEPTH_CAMERA,
-        WRIST_RGB_CAMERA, WRIST_DEPTH_CAMERA
-    )
+    from .sim import SimulatedJointController, HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA
     from stretch_mujoco import StretchMujocoSimulator
     from stretch_mujoco.enums.stretch_cameras import StretchCameras
     
@@ -116,8 +106,4 @@ __all__ = [
     'HEAD_CAMERA',
     'WRIST_CAMERA',
     'NAVIGATION_CAMERA',
-    'HEAD_RGB_CAMERA',
-    'HEAD_DEPTH_CAMERA',
-    'WRIST_RGB_CAMERA',
-    'WRIST_DEPTH_CAMERA',
 ]

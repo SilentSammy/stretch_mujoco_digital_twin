@@ -67,14 +67,8 @@ if USE_PHYSICAL:
         USE_PHYSICAL = False
 
 if not USE_PHYSICAL:
-    from .sim import (
-        SimulatedJointController, 
-        HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA,
-        HEAD_RGB_CAMERA, HEAD_DEPTH_CAMERA,
-        WRIST_RGB_CAMERA, WRIST_DEPTH_CAMERA
-    )
+    from .sim import SimulatedJointController
     from stretch_mujoco import StretchMujocoSimulator
-    from stretch_mujoco.enums.stretch_cameras import StretchCameras
     
     # Lazy initialization - only create sim when first accessed
     _sim = None
@@ -83,14 +77,10 @@ if not USE_PHYSICAL:
     def _get_controller():
         global _sim, _controller
         if _controller is None:
-            # Initialize with NO cameras by default (better performance)
-            # Users can explicitly enable cameras if needed
-            # _sim = StretchMujocoSimulator(cameras_to_use=[StretchCameras.cam_d405_rgb, StretchCameras.cam_d405_depth])
-            _sim = StretchMujocoSimulator(cameras_to_use=[])
+            _sim = StretchMujocoSimulator()
             _sim.start()
             _controller = SimulatedJointController(sim=_sim)
-            print("[stretch_toolkit] MuJoCo simulation initialized (no cameras for performance)")
-            print("[stretch_toolkit] To enable cameras, reinitialize with desired camera list")
+            print("[stretch_toolkit] MuJoCo simulation initialized and running")
         return _controller
     
     # Create a proxy object that initializes on first use
@@ -100,6 +90,15 @@ if not USE_PHYSICAL:
     
     controller = _ControllerProxy()
     teleop = TeleopProvider(is_stretch_env=False)
+    
+    # Camera placeholders for sim mode (not yet implemented)
+    HEAD_CAMERA = None
+    WRIST_CAMERA = None
+    NAVIGATION_CAMERA = None
+    HEAD_RGB_CAMERA = None
+    HEAD_DEPTH_CAMERA = None
+    WRIST_RGB_CAMERA = None
+    WRIST_DEPTH_CAMERA = None
     
     print("[stretch_toolkit] Simulation mode ready (lazy init)")
 

@@ -2,13 +2,14 @@
 import stretch_body.robot as rb
 from stretch_body.robot_params import RobotParams
 from stretch_body import gamepad_joints
-from .base import JointController, DepthCamInfo, CamInfo
-from .get_cam_feeds import (
-    get_head_rgb_frame, get_head_depth_frame,
-    get_wrist_rgb_frame, get_wrist_depth_frame,
-    get_wide_cam_frames
-)
+from .base import JointController, DepthCamInfo, RGBCamInfo
 import numpy as np
+import sys
+import os
+
+# Add parent directory to path to import get_cam_feeds
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'sam'))
+from get_cam_feeds import get_head_cam_frames, get_wrist_cam_frames, get_wide_cam_frames
 
 
 class PhysicalJointController(JointController):
@@ -216,74 +217,52 @@ class PhysicalJointController(JointController):
 
 
 # Camera instances for physical robot
-# D435i head camera (rotated 90° CW) - separate RGB and depth cameras
-HEAD_RGB_CAMERA = CamInfo(
-    name="D435i Head RGB",
-    frame_getter=get_head_rgb_frame,
+# D435i head camera (rotated 90° CW)
+HEAD_CAMERA = DepthCamInfo(
+    name="D435i Head",
+    frame_getter=get_head_cam_frames,
     camera_matrix=np.array([
         [303.07223511, 0.0,         122.78679657],
         [0.0,          303.06060791, 210.94392395],
         [0.0,          0.0,          1.0]
     ]),
+    depth_scale=1e-03,
     distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
-    distortion_model="inverse_brown_conrady"
-)
-
-HEAD_DEPTH_CAMERA = CamInfo(
-    name="D435i Head Depth",
-    frame_getter=get_head_depth_frame,
-    camera_matrix=np.array([
+    distortion_model="inverse_brown_conrady",
+    depth_camera_matrix=np.array([
         [214.76873779, 0.0,         120.41242218],
         [0.0,          214.76873779, 209.7878418],
         [0.0,          0.0,          1.0]
     ]),
-    distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
-    distortion_model="brown_conrady"
+    depth_distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    depth_distortion_model="brown_conrady"
 )
 
-HEAD_CAMERA = DepthCamInfo(
-    name="D435i Head",
-    rgb_cam=HEAD_RGB_CAMERA,
-    depth_cam=HEAD_DEPTH_CAMERA,
-    depth_scale=1e-03
-)
-
-# D405 wrist camera (no rotation) - separate RGB and depth cameras
-WRIST_RGB_CAMERA = CamInfo(
-    name="D405 Wrist RGB",
-    frame_getter=get_wrist_rgb_frame,
+# D405 wrist camera (no rotation)
+WRIST_CAMERA = DepthCamInfo(
+    name="D405 Wrist",
+    frame_getter=get_wrist_cam_frames,
     camera_matrix=np.array([
         [385.62329102, 0.0,         314.58789062],
         [0.0,          385.1807251,  243.30551147],
         [0.0,          0.0,          1.0]
     ]),
+    depth_scale=1e-04,
     distortion_coeffs=np.array([-5.52569292e-02, 5.98766357e-02, -8.58005136e-04,
                                  -9.32277253e-05, -1.93387289e-02]),
-    distortion_model="inverse_brown_conrady"
-)
-
-WRIST_DEPTH_CAMERA = CamInfo(
-    name="D405 Wrist Depth",
-    frame_getter=get_wrist_depth_frame,
-    camera_matrix=np.array([
+    distortion_model="inverse_brown_conrady",
+    depth_camera_matrix=np.array([
         [378.52832031, 0.0,         318.47045898],
         [0.0,          378.52832031, 241.03790283],
         [0.0,          0.0,          1.0]
     ]),
-    distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
-    distortion_model="brown_conrady"
-)
-
-WRIST_CAMERA = DepthCamInfo(
-    name="D405 Wrist",
-    rgb_cam=WRIST_RGB_CAMERA,
-    depth_cam=WRIST_DEPTH_CAMERA,
-    depth_scale=1e-04
+    depth_distortion_coeffs=np.array([0., 0., 0., 0., 0.]),
+    depth_distortion_model="brown_conrady"
 )
 
 # OV9782 navigation camera (RGB-only, wide-angle)
 # Intrinsics not yet calibrated - will be added when available
-NAVIGATION_CAMERA = CamInfo(
+NAVIGATION_CAMERA = RGBCamInfo(
     name="OV9782 Navigation",
     frame_getter=get_wide_cam_frames,
     # camera_matrix=None,  # TODO: Add intrinsics after calibration

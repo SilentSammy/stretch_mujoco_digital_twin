@@ -5,20 +5,17 @@ import numpy as np
 import math
 
 class CamInfo:
-    """Single camera configuration with intrinsics and frame getter."""
+    """Base class for camera configuration with intrinsics and projection methods."""
     
-    def __init__(self, name, frame_getter, camera_matrix=None, 
-                 distortion_coeffs=None, distortion_model=None):
+    def __init__(self, name, camera_matrix=None, distortion_coeffs=None, distortion_model=None):
         """
         Args:
-            name: Camera identifier (e.g., "D435i RGB", "D435i Depth")
-            frame_getter: Function that returns a single frame (rgb or depth array)
+            name: Camera identifier (e.g., "D435i Head")
             camera_matrix: 3x3 numpy array with camera intrinsics (optional)
             distortion_coeffs: Camera distortion coefficients (optional)
             distortion_model: Camera distortion model type (optional)
         """
         self.name = name
-        self.get_frame = frame_getter
         self.camera_matrix = camera_matrix
         self.distortion_coeffs = distortion_coeffs
         self.distortion_model = distortion_model
@@ -110,102 +107,67 @@ class CamInfo:
         return x, y
 
 
-class DepthCamInfo:
-    """Depth camera configuration wrapping separate RGB and depth cameras."""
+class RGBCamInfo(CamInfo):
+    """Camera configuration for RGB-only cameras with optional intrinsics."""
     
-    def __init__(self, name, rgb_cam, depth_cam, depth_scale):
+    def __init__(self, name, frame_getter, camera_matrix=None,
+                 distortion_coeffs=None, distortion_model=None):
         """
         Args:
-            name: Camera system identifier (e.g., "D435i Head", "D405 Wrist")
-            rgb_cam: CamInfo for RGB camera
-            depth_cam: CamInfo for depth camera  
+            name: Camera identifier (e.g., "OV9782 Navigation")
+            frame_getter: Function that returns rgb_frame (single frame, not tuple)
+            camera_matrix: 3x3 numpy array with camera intrinsics (optional)
+            distortion_coeffs: Camera distortion coefficients (optional)
+            distortion_model: Camera distortion model type (optional)
+        """
+        super().__init__(name, camera_matrix, distortion_coeffs, distortion_model)
+        self.get_frame = frame_getter
+
+
+class DepthCamInfo(CamInfo):
+    """Camera configuration for depth cameras with intrinsics and frame getter."""
+    
+    def __init__(self, name, frame_getter, camera_matrix, depth_scale,
+                 distortion_coeffs=None, distortion_model=None,
+                 depth_camera_matrix=None, depth_distortion_coeffs=None, depth_distortion_model=None):
+        """
+        Args:
+            name: Camera identifier (e.g., "D435i Head", "D405 Wrist")
+            frame_getter: Function that returns (rgb_frame, depth_frame) tuple
+            camera_matrix: 3x3 numpy array with RGB camera intrinsics
             depth_scale: Meters per depth unit (e.g., 1e-03 for D435i)
+            distortion_coeffs: RGB camera distortion coefficients (optional)
+            distortion_model: RGB camera distortion model type (optional)
+            depth_camera_matrix: 3x3 numpy array with depth camera intrinsics (optional, defaults to camera_matrix)
+            depth_distortion_coeffs: Depth camera distortion coefficients (optional)
+            depth_distortion_model: Depth camera distortion model type (optional)
         """
-        self.name = name
-        self.rgb_cam = rgb_cam
-        self.depth_cam = depth_cam
+        super().__init__(name, camera_matrix, distortion_coeffs, distortion_model)
+        self.get_frames = frame_getter
         self.depth_scale = depth_scale
-    
-    def get_frames(self):
-        """Get both RGB and depth frames.
         
-        Returns:
-            tuple: (rgb_frame, depth_frame)
-        """
-        return self.rgb_cam.get_frame(), self.depth_cam.get_frame()
+        # Depth camera intrinsics (may differ from RGB)
+        self.depth_camera_matrix = depth_camera_matrix if depth_camera_matrix is not None else camera_matrix
+        self.depth_distortion_coeffs = depth_distortion_coeffs
+        self.depth_distortion_model = depth_distortion_model
     
-    # Delegate RGB intrinsics to rgb_cam
-    @property
-    def fx(self):
-        return self.rgb_cam.fx
-    
-    @property
-    def fy(self):
-        return self.rgb_cam.fy
-    
-    @property
-    def cx(self):
-        return self.rgb_cam.cx
-    
-    @property
-    def cy(self):
-        return self.rgb_cam.cy
-    
-    @property
-    def camera_matrix(self):
-        return self.rgb_cam.camera_matrix
-    
-    @property
-    def distortion_coeffs(self):
-        return self.rgb_cam.distortion_coeffs
-    
-    @property
-    def distortion_model(self):
-        return self.rgb_cam.distortion_model
-    
-    # Depth camera intrinsics
     @property
     def depth_fx(self):
-        return self.depth_cam.fx
+        return self.depth_camera_matrix[0, 0]
     
     @property
     def depth_fy(self):
-        return self.depth_cam.fy
+        return self.depth_camera_matrix[1, 1]
     
     @property
     def depth_cx(self):
-        return self.depth_cam.cx
+        return self.depth_camera_matrix[0, 2]
     
     @property
     def depth_cy(self):
-        return self.depth_cam.cy
-    
-    @property
-    def depth_camera_matrix(self):
-        return self.depth_cam.camera_matrix
-    
-    @property
-    def depth_distortion_coeffs(self):
-        return self.depth_cam.distortion_coeffs
-    
-    @property
-    def depth_distortion_model(self):
-        return self.depth_cam.distortion_model
-    
-    # Delegate RGB projection methods
-    def pixel_to_normalized(self, centroid):
-        """Convert pixel coordinates to normalized camera coordinates (RGB frame)."""
-        return self.rgb_cam.pixel_to_normalized(centroid)
-    
-    def pixel_to_object_angles(self, centroid):
-        """Convert pixel to angular position in degrees (RGB frame)."""
-        return self.rgb_cam.pixel_to_object_angles(centroid)
-    
-    def object_angles_to_pixel(self, yaw, pitch):
-        """Convert angular position to pixel coordinates (RGB frame)."""
-        return self.rgb_cam.object_angles_to_pixel(yaw, pitch)
+        return self.depth_camera_matrix[1, 2]
 
-    def get_depth(self, centroid, depth_image=None, sample_radius=None):
+    def get_depth(self, centroid, depth_image, sample_radius=None):
         """Get distance to object in meters using depth camera intrinsics.
         
         Projects RGB pixel coordinate to depth camera coordinate system,
@@ -213,17 +175,15 @@ class DepthCamInfo:
         
         Args:
             centroid: (x, y) pixel coordinates in RGB frame
-            depth_image: Depth image array (if None, fetches current frame)
+            depth_image: Depth image array
             sample_radius: Radius in pixels to sample around centroid (default: 3)
+            visualize: If True, show debug visualization of depth sampling (default: False)
         
         Returns:
             Median distance in meters, or None if no valid depth samples
         """
         if sample_radius is None:
             sample_radius = 3
-        
-        if depth_image is None:
-            depth_image = self.depth_cam.get_frame()
         
         # Project RGB pixel to depth camera coordinate system
         # 1. Convert RGB pixel to normalized coordinates
