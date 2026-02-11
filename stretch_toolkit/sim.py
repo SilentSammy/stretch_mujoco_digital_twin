@@ -38,10 +38,10 @@ class SimulatedJointController(JointController):
         self.joint_max_speeds = {
             'lift_up': 0.2,
             'arm_out': 0.1,
-            'head_tilt_up': 0.5,
+            'head_tilt_up': -0.5,  # Negated for correct tilt direction
             'head_pan_counterclockwise': -0.5,  # Negated for counterclockwise
             'wrist_yaw_counterclockwise': -1.0,  # Negated for counterclockwise
-            'wrist_pitch_up': 0.05,
+            'wrist_pitch_up': -0.05,
             'wrist_roll_counterclockwise': -0.25,  # Negated for counterclockwise
             'gripper_open': 0.07,
         }
