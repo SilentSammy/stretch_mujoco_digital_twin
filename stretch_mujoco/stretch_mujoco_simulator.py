@@ -30,8 +30,25 @@ from stretch_mujoco.datamodels.status_command import (
 )
 import stretch_mujoco.utils as utils
 from stretch_mujoco.utils import require_connection, block_until_check_succeeds
-
-
+from stretch_mujoco.datamodels.status_command import (
+    CommandBaseVelocity,
+    CommandCameraManagement,
+    CommandCoordinateFrameArrowsViz,
+    CommandKeyframe,
+    CommandMove,
+    CommandObjectPose,
+    StatusCommand,
+)
+from stretch_mujoco.datamodels.status_command import (
+    CommandBaseVelocity,
+    CommandCameraManagement,
+    CommandCoordinateFrameArrowsViz,
+    CommandKeyframe,
+    CommandMove,
+    CommandObjectPose,
+    CommandObjectMoveBy,
+    StatusCommand,
+)
 class StretchMujocoSimulator:
     """
     Stretch Mujoco Simulator class for interfacing with the Mujoco Server.
@@ -209,7 +226,58 @@ class StretchMujocoSimulator:
             f"The Mujoco process has ended.",
             fg="red",
         )
+    @require_connection
+    def move_object_by(
+        self,
+        body_name: str,
+        delta: tuple[float, float, float],
+        z_min: float = 0.45,
+    ):
+        """
+        Move a freejoint object by a relative step from its current MuJoCo position.
 
+        Args:
+            body_name: Body name from scene.xml.
+            delta: Relative movement as (dx, dy, dz).
+            z_min: Minimum allowed z value.
+        """
+        with self._command_lock:
+            command = self.data_proxies.get_command()
+
+            command.object_move_by = CommandObjectMoveBy(
+                body_name=body_name,
+                delta=tuple(delta),
+                z_min=z_min,
+                trigger=True,
+            )
+
+            self.data_proxies.set_command(command)
+    @require_connection
+    def set_object_pose(
+        self,
+        body_name: str,
+        position: tuple[float, float, float],
+        quat: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
+    ):
+        """
+        Teleport a freejoint object to a new world pose.
+
+        Args:
+            body_name: Body name from scene.xml.
+            position: World position as (x, y, z).
+            quat: Quaternion as (qw, qx, qy, qz).
+        """
+        with self._command_lock:
+            command = self.data_proxies.get_command()
+
+            command.object_pose = CommandObjectPose(
+                body_name=body_name,
+                position=tuple(position),
+                quat=tuple(quat),
+                trigger=True,
+            )
+
+            self.data_proxies.set_command(command)
     @require_connection
     def home(self) -> None:
         """

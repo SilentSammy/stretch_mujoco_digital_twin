@@ -30,7 +30,19 @@ from stretch_mujoco.datamodels.status_command import CommandBaseVelocity, Comman
 from stretch_mujoco.mujoco_server_sensor_manager import MujocoServerSensorManagerThreaded
 import stretch_mujoco.utils as utils
 from stretch_mujoco.utils import FpsCounter
+from stretch_mujoco.datamodels.status_command import (
+    CommandBaseVelocity,
+    CommandMove,
+    CommandObjectPose,
+    StatusCommand,
+)
 
+from stretch_mujoco.datamodels.status_command import (
+    CommandBaseVelocity,
+    CommandMove,
+    CommandObjectMoveBy,
+    StatusCommand,
+)
 
 @dataclass
 class MujocoServerProxies:
@@ -182,7 +194,47 @@ class MujocoServer:
 
     This uses the mujoco simulator in headless mode.
     """
+    def set_free_body_pose(
+        self,
+        body_name: str,
+        position: tuple[float, float, float],
+        quat: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
+    ):
+        body_id = mujoco.mj_name2id(
+            self.mjmodel,
+            mujoco.mjtObj.mjOBJ_BODY,
+            body_name,
+        )
 
+        if body_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' not found.")
+            return
+
+        joint_id = -1
+
+        for j in range(self.mjmodel.njnt):
+            if (
+                self.mjmodel.jnt_bodyid[j] == body_id
+                and self.mjmodel.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+            ):
+                joint_id = j
+                break
+
+        if joint_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' does not have a freejoint.")
+            return
+
+        qadr = self.mjmodel.jnt_qposadr[joint_id]
+        dadr = self.mjmodel.jnt_dofadr[joint_id]
+
+        # Freejoint qpos = x, y, z, qw, qx, qy, qz
+        self.mjdata.qpos[qadr:qadr + 3] = position
+        self.mjdata.qpos[qadr + 3:qadr + 7] = quat
+
+        # Freejoint qvel = linear velocity xyz + angular velocity xyz
+        self.mjdata.qvel[dadr:dadr + 6] = 0.0
+
+        mujoco.mj_forward(self.mjmodel, self.mjdata)
     @classmethod
     def launch_server(
         cls,
@@ -201,6 +253,60 @@ class MujocoServer:
             show_viewer_ui=show_viewer_ui,
             camera_hz=camera_hz,
             cameras_to_use=cameras_to_use,
+        )
+
+    def move_free_body_by(
+    self,
+    body_name: str,
+    delta: tuple[float, float, float],
+    z_min: float = 0.45,):
+        body_id = mujoco.mj_name2id(
+            self.mjmodel,
+            mujoco.mjtObj.mjOBJ_BODY,
+            body_name,
+        )
+
+        if body_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' not found.")
+            return
+
+        joint_id = -1
+
+        for j in range(self.mjmodel.njnt):
+            if (
+                self.mjmodel.jnt_bodyid[j] == body_id
+                and self.mjmodel.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+            ):
+                joint_id = j
+                break
+
+        if joint_id == -1:
+            print(f"[MujocoServer] Body '{body_name}' does not have a freejoint.")
+            return
+
+        qadr = self.mjmodel.jnt_qposadr[joint_id]
+        dadr = self.mjmodel.jnt_dofadr[joint_id]
+
+        # Current real position from MuJoCo
+        current_pos = self.mjdata.qpos[qadr:qadr + 3].copy()
+
+        # Add only the requested step
+        new_pos = current_pos + np.array(delta, dtype=float)
+
+        # Avoid going below the table/floor
+        new_pos[2] = max(new_pos[2], z_min)
+
+        # Freejoint qpos = x, y, z, qw, qx, qy, qz
+        self.mjdata.qpos[qadr:qadr + 3] = new_pos
+
+        # Stop residual velocity so it stays there
+        self.mjdata.qvel[dadr:dadr + 6] = 0.0
+
+        mujoco.mj_forward(self.mjmodel, self.mjdata)
+
+        print(
+            f"[MujocoServer] Moved '{body_name}' by {delta}. "
+            f"New position: x={new_pos[0]:.3f}, y={new_pos[1]:.3f}, z={new_pos[2]:.3f}"
         )
 
     def change_start_pose(self,model: MjModel, translation: list|None, rotation_quat: list|None):
@@ -578,8 +684,34 @@ class MujocoServer:
             command_status.camera_management.trigger = False
             self._handle_camera_management(command_status.camera_management)
 
-        self.base_controller.update()
+        # object pose command
+        if command_status.object_pose is not None and command_status.object_pose.trigger:
+            command_status.object_pose.trigger = False
 
+            self.set_free_body_pose(
+                body_name=command_status.object_pose.body_name,
+                position=command_status.object_pose.position,
+                quat=command_status.object_pose.quat,
+            )
+        # object pose command
+        if command_status.object_pose is not None and command_status.object_pose.trigger:
+            command_status.object_pose.trigger = False
+
+            self.set_free_body_pose(
+                body_name=command_status.object_pose.body_name,
+                position=command_status.object_pose.position,
+                quat=command_status.object_pose.quat,
+            )
+            # object relative movement command
+        if command_status.object_move_by is not None and command_status.object_move_by.trigger:
+            command_status.object_move_by.trigger = False
+
+            self.move_free_body_by(
+                body_name=command_status.object_move_by.body_name,
+                delta=command_status.object_move_by.delta,
+                z_min=command_status.object_move_by.z_min,
+            )
+        self.base_controller.update()
         self.data_proxies.set_command(command_status)
 
     def _handle_camera_management(self, cmd):
