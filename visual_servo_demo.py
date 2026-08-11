@@ -2,7 +2,7 @@
 Simple test: robot control with configurable camera displays.
 """
 from stretch_toolkit import (
-    controller, teleop, BACKEND_NAME, merge_proportional,
+    controller, teleop, BACKEND_NAME,
     HEAD_CAMERA, WRIST_CAMERA, NAVIGATION_CAMERA,
     HEAD_RGB_CAMERA, HEAD_DEPTH_CAMERA,
     WRIST_RGB_CAMERA, WRIST_DEPTH_CAMERA
@@ -82,8 +82,8 @@ def get_obj_center(frame):
 def servoing_demo():
     try:
         while True:
-            # Get normalized velocities from input devices
-            cmd = teleop.get_normalized_velocities()
+            # Autonomous command built from visual servoing (empty if no target).
+            cmd_autonomous = {}
 
             # Get frame from configured camera
             frame = SERVO_CONFIG["camera"].get_frame()
@@ -104,14 +104,18 @@ def servoing_demo():
                     error_x = norm_center[0] - norm_image_center[0]
                     error_y = norm_center[1] - norm_image_center[1]
                     Kp = 0.5  # Proportional gain
-                    velocities = {
-                        SERVO_CONFIG["joint_x"]: Kp * error_x,
-                        SERVO_CONFIG["joint_y"]: Kp * error_y
+                    cmd_autonomous = {
+                        SERVO_CONFIG["joint_x"]: -Kp * error_x,
+                        SERVO_CONFIG["joint_y"]: -Kp * error_y
                     }
-                    cmd = merge_proportional(cmd, velocities) # User input always wins over auto commands
 
                 # Display the drawing frame
                 cv2.imshow(SERVO_CONFIG["name"], drawing_frame)
+
+            # Operator always has priority. Toggling MANUAL mode (X / y) fully
+            # disables autonomous tracking for safety; otherwise the operator
+            # proportionally overrides the servoing on any joint they touch.
+            cmd = teleop.get_manual_override(cmd_autonomous)
 
             # Send to robot (physical or simulated)
             controller.set_velocities(cmd)

@@ -464,6 +464,9 @@ jupyter = [
     { name = "ipython", version = "8.37.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "ipython", version = "9.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+physical = [
+    { name = "rplidar-roboticia" },
+]
 robocasa = [
     { name = "numba" },
     { name = "numpy" },
@@ -489,9 +492,10 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pynput", specifier = ">=1.8.1" },
     { name = "pytest", marker = "extra == 'dev'" },
+    { name = "rplidar-roboticia", marker = "extra == 'physical'", specifier = ">=0.9.5" },
     { name = "urchin", specifier = ">=0.0.29" },
 ]
-provides-extras = ["dev", "jupyter", "robocasa"]
+provides-extras = ["dev", "jupyter", "physical", "robocasa"]
 
 [[package]]
 name = "hello-robot-stretch-urdf"
@@ -1535,6 +1539,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyserial"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb", size = 159125, upload-time = "2020-11-23T03:59:15.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0", size = 90585, upload-time = "2020-11-23T03:59:13.41Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "8.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1711,6 +1724,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cd/cc/6c99c84aa60ac1cc56747bed6be8ce6305b9b861d7475772e7a25ce019d3/pyzmq-26.4.0-pp311-pypy311_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7731abd23a782851426d4e37deb2057bf9410848a4459b5ede4fe89342e687a9", size = 756757, upload-time = "2025-04-04T12:05:19.19Z" },
     { url = "https://files.pythonhosted.org/packages/13/9c/d8073bd898eb896e94c679abe82e47506e2b750eb261cf6010ced869797c/pyzmq-26.4.0-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:a222ad02fbe80166b0526c038776e8042cd4e5f0dec1489a006a1df47e9040e0", size = 555371, upload-time = "2025-04-04T12:05:20.702Z" },
 ]
+
+[[package]]
+name = "rplidar-roboticia"
+version = "0.9.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyserial" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3e/7a/fdcaba934ee5d2809d3637a854e0fe2bf8fe912bd0fbe4af6912ed26f5d7/rplidar-roboticia-0.9.5.tar.gz", hash = "sha256:709e9143f7701d69e8439231b065e676f7d5a6086cd2922113b055bedf99f0e3", size = 6149, upload-time = "2017-07-11T08:46:34.645Z" }
 
 [[package]]
 name = "scipy"

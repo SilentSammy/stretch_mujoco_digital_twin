@@ -2,10 +2,10 @@
 
 Usage Examples:
     # Basic comparison (shows which files differ):
-    python compare_toolkit_remote.py --local stretch_toolkit --remote hello-robot@192.168.137.215:/home/hello-robot/stretch_workspace/digital_twin/stretch_toolkit
+    python compare_toolkit_remote.py --local stretch_toolkit --remote hello-robot@192.168.137.71:/home/hello-robot/stretch_workspace/digital_twin/stretch_toolkit
     
     # With detailed diffs:
-    python compare_toolkit_remote.py --local stretch_toolkit --remote hello-robot@192.168.137.215:/home/hello-robot/stretch_workspace/digital_twin/stretch_toolkit --diff
+    python compare_toolkit_remote.py --local stretch_toolkit --remote hello-robot@192.168.137.71:/home/hello-robot/stretch_workspace/digital_twin/stretch_toolkit --diff
     
     # If SSH config is set up (so 'ssh hello-robot' works):
     python compare_toolkit_remote.py --local stretch_toolkit --remote hello-robot:/home/hello-robot/stretch_workspace/digital_twin/stretch_toolkit
@@ -222,7 +222,7 @@ def main(local, remote, diff):
     """Compare local directory with remote directory via SSH.
     
     Example:
-        python compare_toolkit_remote.py --local stretch_toolkit --remote hello-robot@192.168.137.215:/home/hello-robot/stretch_workspace/digital_twin/stretch_toolkit
+        python compare_toolkit_remote.py --local stretch_toolkit --remote hello-robot@192.168.137.71:/home/hello-robot/stretch_workspace/digital_twin/stretch_toolkit
     """
     if not os.path.exists(local):
         click.secho(f"Error: Local directory '{local}' does not exist!", fg="red", bold=True)

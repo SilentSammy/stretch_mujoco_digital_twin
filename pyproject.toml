@@ -58,6 +58,11 @@ jupyter = [
     "ipykernel",
     "ipython",
 ]
+physical = [
+    # Pure-Python driver for the base RPLidar A1 (no ROS required).
+    # Only needed when running stretch_toolkit on the physical robot.
+    "rplidar-roboticia>=0.9.5",
+]
 robocasa = [
      # Python 3.10 is required for Robocasa compatibility
     "opencv-python==4.8.1.78",

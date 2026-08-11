@@ -166,7 +166,11 @@ class PhysicalJointController(JointController):
             gripper_vel = vel_dict.get('gripper_open', 0.0)
             motor = self.robot.end_of_arm.get_joint('stretch_gripper')
             v = max(-1.0, min(1.0, gripper_vel)) * self._gripper_max_vel
-            motor.set_velocity(v, self._gripper_accel)
+            try:
+                motor.set_velocity(v, self._gripper_accel)
+            except (AttributeError, TypeError):
+                # Motor not fully initialized (e.g., during early shutdown)
+                pass
         
         self.robot.push_command()
     

@@ -11,11 +11,13 @@ import numpy as np
 print(f"\n=== Running on {BACKEND_NAME} backend ===\n")
 
 
-def find_blue_object(rgb_frame):
+def find_object(rgb_frame):
     if rgb_frame is None:
         return None
     hsv = cv2.cvtColor(rgb_frame, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, np.array([110, 100, 100]), np.array([130, 255, 255]))
+    mask1 = cv2.inRange(hsv, np.array([0, 100, 100]), np.array([10, 255, 255]))
+    mask2 = cv2.inRange(hsv, np.array([170, 100, 100]), np.array([180, 255, 255]))
+    mask = cv2.bitwise_or(mask1, mask2)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if contours:
         largest = max(contours, key=cv2.contourArea)
@@ -34,13 +36,13 @@ def main():
         "wrist_roll_counterclockwise": 0.0,
         "wrist_yaw_counterclockwise": 0.0,
         "wrist_pitch_up": 0.0,
-        "gripper_open": 0.3,
+        "gripper_open": 4.0,
         "arm_out": 0.0,
     })
 
     pre_grip_pose = StateController(controller, {
         "wrist_roll_counterclockwise": 0.0,
-        "gripper_open": 0.4,
+        "gripper_open": 4.0,
     })
 
     # --- Tuning constants ---
@@ -53,6 +55,14 @@ def main():
     Kp_pitch  = 0.5
     Kp_arm    = 10.0
 
+    # --- Real-robot camera/gripper offset compensation ---
+    # The wrist (D405) lens sits above the gripper fingertips on the physical
+    # robot, so aiming the optical axis straight at the object grabs slightly
+    # low. These bias the aim upward. Both are ~0 in sim (camera is on the
+    # grasp centerline) and must be calibrated on hardware.
+    GRIPPER_CAM_DY_PX  = 20    # px the object should sit BELOW frame center (reach)
+    LIFT_HEIGHT_OFFSET = 0.02  # m of extra lift height at the align settle point
+
     # --- Phase state ---
     phase = "approach"
     in_zone = False  # Approach phase hysteresis
@@ -61,13 +71,14 @@ def main():
 
     try:
         while True:
-            velocities = teleop.get_normalized_velocities()
+            # velocities = teleop.get_normalized_velocities()
+            velocities = {}
             auto_velocities = {}
 
             # ----------------------------------------------------------------
             if phase == "approach":
                 rgb = HEAD_RGB_CAMERA.get_frame()
-                centroid = find_blue_object(rgb)
+                centroid = find_object(rgb)
 
                 if centroid is not None and rgb is not None:
                     cx, cy = centroid
@@ -87,13 +98,13 @@ def main():
 
                         # Start raising lift toward object height early (10cm above align target)
                         cam_z = transforms.get_wrist_cam_T()[2, 3]
-                        auto_velocities["lift_up"] = Kp_lift * (z - (cam_z + 0.01) + 0.10)
+                        auto_velocities["lift_up"] = Kp_lift * (z - (cam_z + 0.05) + 0.10)
 
                         if not in_zone:
-                            if 0.45 <= horizontal_distance <= 0.55:
+                            if 0.55 <= horizontal_distance <= 0.65:
                                 in_zone = True
                         else:
-                            if horizontal_distance < 0.4 or horizontal_distance > 0.6:
+                            if horizontal_distance < 0.5 or horizontal_distance > 0.7:
                                 in_zone = False
 
                         if in_zone:
@@ -124,7 +135,7 @@ def main():
             # ----------------------------------------------------------------
             elif phase == "align":
                 rgb = WRIST_RGB_CAMERA.get_frame()
-                centroid = find_blue_object(rgb)
+                centroid = find_object(rgb)
 
                 if centroid is not None:
                     cx, cy = centroid
@@ -136,10 +147,10 @@ def main():
                         cam_z = transforms.get_wrist_cam_T()[2, 3]
 
                         auto_velocities["base_counterclockwise"] = Kp_angle * (-math.pi / 2 - angle_z + math.radians(3))
-                        auto_velocities["lift_up"] = Kp_lift * (z - (cam_z + 0.01))
-
+                        auto_velocities["lift_up"] = Kp_lift * (z - (cam_z + 0.01) + LIFT_HEIGHT_OFFSET)
                         angle_err = abs(-math.pi / 2 - angle_z)
-                        lift_err  = abs(z - (cam_z + 0.01))
+                        lift_err  = abs(z - (cam_z + 0.01) + LIFT_HEIGHT_OFFSET)
+
                         if stow_pose.is_at_goal() and angle_err < math.radians(5) and lift_err < 0.03:
                             phase = "reach"
                             print(f"\nPhase: {phase}")
@@ -156,7 +167,7 @@ def main():
             # ----------------------------------------------------------------
             elif phase == "reach":
                 rgb = WRIST_RGB_CAMERA.get_frame()
-                centroid = find_blue_object(rgb)
+                centroid = find_object(rgb)
 
                 if centroid is not None:
                     cx, cy = centroid
@@ -164,8 +175,11 @@ def main():
                     if rgb is not None:
                         frame_cx = rgb.shape[1] / 2
                         frame_cy = rgb.shape[0] / 2
+                        # Aim the object slightly below frame center so the
+                        # fingertips (not the lens) line up with the target.
+                        target_cy = frame_cy + GRIPPER_CAM_DY_PX
                         error_x = (cx - frame_cx) / rgb.shape[1]
-                        error_y = (cy - frame_cy) / rgb.shape[0]
+                        error_y = (cy - target_cy) / rgb.shape[0]
                         auto_velocities["wrist_yaw_counterclockwise"] = Kp_yaw * error_x
                         auto_velocities["wrist_pitch_up"] = -Kp_pitch * error_y
                         cv2.circle(rgb, (cx, cy), 10, (0, 255, 0), -1)
@@ -192,6 +206,7 @@ def main():
                 auto_velocities["gripper_open"] = -1.0
                 velocities = merge_proportional(velocities, auto_velocities)
 
+            velocities = teleop.get_manual_override(velocities)
             controller.set_velocities(velocities)
             cv2.waitKey(1)
             time.sleep(1 / 30)
