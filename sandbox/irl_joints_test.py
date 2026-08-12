@@ -1,8 +1,8 @@
 import time
-import stretch_mujoco_api.robot
+import stretch_body.robot
 
 if __name__ == "__main__":
-    robot = stretch_mujoco_api.robot.Robot()
+    robot = stretch_body.robot.Robot()
     robot.startup()
     robot.enable_collision_mgmt()
     try:
@@ -32,6 +32,5 @@ if __name__ == "__main__":
         time.sleep(2)  # Let the lift move for 2 seconds
         robot.lift.set_velocity(0.0)  # Stop the lift
         robot.push_command()  # Push command to robot
-
     finally:
         robot.stop()  # Stop the robot and clean up
