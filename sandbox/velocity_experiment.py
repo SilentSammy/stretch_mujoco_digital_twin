@@ -8,17 +8,17 @@ if __name__ == "__main__":
     try:
         print(f"Limits: {robot.lift}")
         # Start position
-        robot.lift.move_to(0.5)
+        robot.lift.move_to(1.0)
         robot.push_command()
         robot.wait_command()
 
         # End position
-        robot.lift.move_to(1.0)
+        robot.lift.move_to(0.5)
         robot.push_command()
 
         prev_lift_pos = robot.lift.status['pos']
         prev_time = time.time()
-        for i in range(10):
+        for i in range(200):
             dt = time.time() - prev_time
             prev_time = time.time()
 

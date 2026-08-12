@@ -1,13 +1,14 @@
-"""A small ``stretch_body.robot``-compatible facade for the MuJoCo simulator."""
+"""A small ``stretch_body.robot``-compatible facade for MuJoCo."""
 
-from collections.abc import Callable
+import threading
+import time
 
 from stretch_mujoco.enums.actuators import Actuators
 from stretch_mujoco.stretch_mujoco_simulator import StretchMujocoSimulator
 
 
 class Lift:
-    """Lift API shaped like ``stretch_body.robot.Robot.lift``."""
+    DEFAULT_VELOCITY = 0.1
 
     def __init__(self, robot: "Robot") -> None:
         self._robot = robot
@@ -18,30 +19,40 @@ class Lift:
         return {"pos": status.pos, "vel": status.vel}
 
     @property
+    def limits(self) -> tuple[float, float]:
+        return self._robot._sim.pull_joint_limits()[Actuators.lift]
+
+    @property
     def total_range(self) -> float:
-        lower, upper = self._robot._sim.pull_joint_limits()[Actuators.lift]
+        lower, upper = self.limits
         return float(upper - lower)
 
+    def _move(self, to: float, at: float) -> None:
+        lower, upper = self.limits
+        destination = min(max(to, lower), upper)
+        self._robot._pending_motion = (destination, abs(at))
+
     def move_to(self, position_m: float) -> None:
-        self._robot._queue_command(
-            lambda: self._robot._sim.move_to(Actuators.lift, position_m),
-            lambda: self._robot._sim.wait_until_at_setpoint(Actuators.lift),
-        )
+        self._move(position_m, self.DEFAULT_VELOCITY)
 
     def move_by(self, distance_m: float) -> None:
-        self._robot._queue_command(
-            lambda: self._robot._sim.move_by(Actuators.lift, distance_m),
-            lambda: self._robot._sim.wait_while_is_moving(Actuators.lift),
-        )
+        self._move(self.status["pos"] + distance_m, self.DEFAULT_VELOCITY)
+
+    def set_velocity(self, velocity_m: float) -> None:
+        lower, upper = self.limits
+        destination = upper if velocity_m > 0 else lower
+        if velocity_m == 0:
+            destination = self.status["pos"]
+        self._move(destination, velocity_m)
 
 
 class Robot:
-    """Minimal simulated counterpart of ``stretch_body.robot.Robot``."""
-
     def __init__(self) -> None:
         self._sim = StretchMujocoSimulator()
-        self._pending_commands: list[tuple[Callable[[], None], Callable[[], bool]]] = []
-        self._command_waiters: list[Callable[[], bool]] = []
+        self._pending_motion: tuple[float, float] | None = None
+        self._motion_thread: threading.Thread | None = None
+        self._cancel_motion = threading.Event()
+        self._motion_succeeded = True
         self.lift = Lift(self)
 
     def startup(self) -> bool:
@@ -49,25 +60,59 @@ class Robot:
         return self._sim.is_running()
 
     def enable_collision_mgmt(self) -> None:
-        """Compatibility no-op; MuJoCo handles physical contacts directly."""
-
-    def _queue_command(self, command: Callable[[], None], waiter: Callable[[], bool]) -> None:
-        self._pending_commands.append((command, waiter))
+        """Compatibility no-op; MuJoCo handles contacts directly."""
 
     def push_command(self) -> None:
-        pending_commands = self._pending_commands
-        self._pending_commands = []
-        self._command_waiters = []
+        if self._pending_motion is None:
+            return
 
-        for command, waiter in pending_commands:
-            command()
-            self._command_waiters.append(waiter)
+        self._cancel_active_motion()
+        destination, velocity = self._pending_motion
+        self._pending_motion = None
+        self._cancel_motion.clear()
+        self._motion_succeeded = False
+        self._motion_thread = threading.Thread(
+            target=self._run_lift_motion,
+            args=(destination, velocity),
+            daemon=True,
+        )
+        self._motion_thread.start()
+
+    def _run_lift_motion(self, destination: float, velocity: float) -> None:
+        status = self._sim.pull_status()
+        target = status.lift.pos
+        previous_time = status.time
+
+        while self._sim.is_running() and not self._cancel_motion.is_set():
+            status = self._sim.pull_status()
+            elapsed = status.time - previous_time
+            previous_time = status.time
+            remaining = destination - target
+
+            if velocity == 0 or abs(remaining) <= velocity * elapsed:
+                target = destination
+            else:
+                target += (velocity * elapsed) if remaining > 0 else -(velocity * elapsed)
+
+            self._sim.move_to(Actuators.lift, target)
+
+            if target == destination:
+                self._motion_succeeded = self._sim.wait_until_at_setpoint(Actuators.lift)
+                return
+
+            time.sleep(0.02)
 
     def wait_command(self) -> bool:
-        waiters = self._command_waiters
-        self._command_waiters = []
-        results = [waiter() for waiter in waiters]
-        return all(results)
+        if self._motion_thread is not None:
+            self._motion_thread.join()
+        return self._motion_succeeded
+
+    def _cancel_active_motion(self) -> None:
+        if self._motion_thread is None or not self._motion_thread.is_alive():
+            return
+        self._cancel_motion.set()
+        self._motion_thread.join()
 
     def stop(self) -> None:
+        self._cancel_active_motion()
         self._sim.stop()
