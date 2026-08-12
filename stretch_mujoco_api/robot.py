@@ -30,7 +30,7 @@ class Lift:
     def _move(self, to: float, at: float) -> None:
         lower, upper = self.limits
         destination = min(max(to, lower), upper)
-        self._robot._pending_motion = (destination, abs(at))
+        self._robot._pending_motion = destination, abs(at)
 
     def move_to(self, position_m: float) -> None:
         self._move(position_m, self.DEFAULT_VELOCITY)
@@ -47,17 +47,33 @@ class Lift:
 
 
 class Robot:
+    POSITION_TOLERANCE = 0.005
+    CORRECTION_GAIN = 20.0
+    MAX_CORRECTION = 0.015
+
     def __init__(self) -> None:
         self._sim = StretchMujocoSimulator()
         self._pending_motion: tuple[float, float] | None = None
-        self._motion_thread: threading.Thread | None = None
-        self._cancel_motion = threading.Event()
-        self._motion_succeeded = True
+        self._motion: tuple[float, float] | None = None
+        self._motion_lock = threading.Lock()
+        self._command_complete = threading.Event()
+        self._stop_controller = threading.Event()
+        self._controller_thread: threading.Thread | None = None
         self.lift = Lift(self)
 
     def startup(self) -> bool:
         self._sim.start(headless=False)
-        return self._sim.is_running()
+        if not self._sim.is_running():
+            return False
+
+        position = self.lift.status["pos"]
+        self._motion = position, 0.0
+        self._controller_thread = threading.Thread(
+            target=self._run_lift_controller,
+            daemon=True,
+        )
+        self._controller_thread.start()
+        return True
 
     def enable_collision_mgmt(self) -> None:
         """Compatibility no-op; MuJoCo handles contacts directly."""
@@ -66,53 +82,58 @@ class Robot:
         if self._pending_motion is None:
             return
 
-        self._cancel_active_motion()
-        destination, velocity = self._pending_motion
-        self._pending_motion = None
-        self._cancel_motion.clear()
-        self._motion_succeeded = False
-        self._motion_thread = threading.Thread(
-            target=self._run_lift_motion,
-            args=(destination, velocity),
-            daemon=True,
-        )
-        self._motion_thread.start()
+        with self._motion_lock:
+            self._motion = self._pending_motion
+            self._pending_motion = None
+            self._command_complete.clear()
 
-    def _run_lift_motion(self, destination: float, velocity: float) -> None:
+    def _run_lift_controller(self) -> None:
         status = self._sim.pull_status()
-        target = status.lift.pos
+        desired_position = status.lift.pos
         previous_time = status.time
+        lower, upper = self.lift.limits
 
-        while self._sim.is_running() and not self._cancel_motion.is_set():
+        while self._sim.is_running() and not self._stop_controller.is_set():
             status = self._sim.pull_status()
-            elapsed = status.time - previous_time
+            elapsed = max(status.time - previous_time, 0.0)
             previous_time = status.time
-            remaining = destination - target
 
-            if velocity == 0 or abs(remaining) <= velocity * elapsed:
-                target = destination
-            else:
-                target += (velocity * elapsed) if remaining > 0 else -(velocity * elapsed)
+            with self._motion_lock:
+                motion = self._motion
 
-            self._sim.move_to(Actuators.lift, target)
+            if motion is not None:
+                destination, velocity = motion
+                remaining = destination - desired_position
 
-            if target == destination:
-                self._motion_succeeded = self._sim.wait_until_at_setpoint(Actuators.lift)
-                return
+                if velocity == 0 or abs(remaining) <= velocity * elapsed:
+                    desired_position = destination
+                else:
+                    desired_position += velocity * elapsed * (1 if remaining > 0 else -1)
+
+                error = desired_position - status.lift.pos
+                correction = min(
+                    max(self.CORRECTION_GAIN * error, -self.MAX_CORRECTION),
+                    self.MAX_CORRECTION,
+                )
+                actuator_target = min(max(desired_position + correction, lower), upper)
+                self._sim.move_to(Actuators.lift, actuator_target)
+
+                if (
+                    desired_position == destination
+                    and abs(destination - status.lift.pos) <= self.POSITION_TOLERANCE
+                ):
+                    self._command_complete.set()
 
             time.sleep(0.02)
 
     def wait_command(self) -> bool:
-        if self._motion_thread is not None:
-            self._motion_thread.join()
-        return self._motion_succeeded
-
-    def _cancel_active_motion(self) -> None:
-        if self._motion_thread is None or not self._motion_thread.is_alive():
-            return
-        self._cancel_motion.set()
-        self._motion_thread.join()
+        while self._sim.is_running():
+            if self._command_complete.wait(timeout=0.1):
+                return True
+        return False
 
     def stop(self) -> None:
-        self._cancel_active_motion()
+        self._stop_controller.set()
+        if self._controller_thread is not None:
+            self._controller_thread.join()
         self._sim.stop()

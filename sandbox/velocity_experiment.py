@@ -6,9 +6,8 @@ if __name__ == "__main__":
     robot.startup()
     robot.enable_collision_mgmt()
     try:
-        print(f"Limits: {robot.lift}")
         # Start position
-        robot.lift.move_to(1.0)
+        robot.lift.move_to(0.75)
         robot.push_command()
         robot.wait_command()
 
@@ -29,7 +28,7 @@ if __name__ == "__main__":
             lift_computed_vel = (lift_pos - prev_lift_pos) / dt
             prev_lift_pos = lift_pos
 
-            print(f"rv: {lift_reported_vel:.3f}, cv: {lift_computed_vel:.3f}, pos: {lift_pos:.3f}, {robot._sim.pull_status().sim_to_real_time_ratio_msg}")
+            print(f"rv: {lift_reported_vel:.3f}, cv: {lift_computed_vel:.3f}, pos: {lift_pos:.5f}, {robot._sim.pull_status().sim_to_real_time_ratio_msg}")
             time.sleep(0.05)
         robot.wait_command()
 
