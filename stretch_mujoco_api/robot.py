@@ -34,11 +34,31 @@ class PrismaticJoint:
         self._desired_position = 0.0
 
     @property
-    def status(self) -> dict[str, float]:
+    def status(self) -> dict:
         status = self._robot._sim.pull_status()
+        position = self._actuator.get_position(status)
+        velocity = self._actuator.get_velocity(status)
+        destination = self._motion[0] if self._motion is not None else position
+        near_pos_setpoint = abs(destination - position) <= self.position_tolerance
+        is_moving = abs(velocity) > self.velocity_tolerance
+        timestamp = time.time()
         return {
-            "pos": self._actuator.get_position(status),
-            "vel": self._actuator.get_velocity(status),
+            "timestamp_pc": timestamp,
+            "pos": position,
+            "vel": velocity,
+            "motor": {
+                "timestamp": timestamp,
+                "pos_calibrated": True,
+                "runstop_on": False,
+                "near_pos_setpoint": near_pos_setpoint,
+                "is_moving": is_moving,
+                "is_moving_filtered": is_moving,
+                "is_mg_moving": not near_pos_setpoint or is_moving,
+                "is_mg_accelerating": False,
+                "in_guarded_event": False,
+                "in_safety_event": False,
+                "calibration_rcvd": True,
+            },
         }
 
     @property
@@ -143,6 +163,13 @@ class Robot:
 
     def disable_collision_mgmt(self) -> None:
         """Compatibility no-op; the simulated robot has no collision management."""
+
+    def get_status(self) -> dict[str, dict[str, float]]:
+        # TODO: Add keys: base, head, end_of_arm
+        return {
+            "arm": self.arm.status,
+            "lift": self.lift.status,
+        }
 
     def push_command(self) -> None:
         with self._motion_lock:
