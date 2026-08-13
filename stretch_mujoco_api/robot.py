@@ -6,7 +6,7 @@ import time
 from stretch_mujoco.enums.actuators import Actuators
 from stretch_mujoco.stretch_mujoco_simulator import StretchMujocoSimulator
 
-
+# TODO: Trajectory support
 class PrismaticJoint:
     def __init__(
         self,
@@ -76,11 +76,16 @@ class PrismaticJoint:
         velocity = min(abs(at), self.max_velocity)
         self._pending_motion = destination, velocity
 
-    def move_to(self, position_m: float) -> None:
-        self._move(position_m, self.default_velocity)
+    def home(self) -> None:
+        """Compatibility no-op; the simulated robot is always homed."""
+        pass
 
-    def move_by(self, distance_m: float) -> None:
-        self._move(self.status["pos"] + distance_m, self.default_velocity)
+    def move_to(self, position_m: float, v_m: float | None = None) -> None:
+        self._move(position_m, self.default_velocity if v_m is None else v_m)
+
+    def move_by(self, distance_m: float, v_m: float | None = None) -> None:
+        velocity = self.default_velocity if v_m is None else v_m
+        self._move(self.status["pos"] + distance_m, velocity)
 
     def set_velocity(self, velocity_m: float) -> None:
         lower, upper = self.limits
@@ -157,6 +162,17 @@ class Robot:
         )
         self._controller_thread.start()
         return True
+
+    def is_homed(self) -> bool:
+        """Compatibility no-op; the simulated robot is always homed."""
+        return True
+
+    def home(self) -> None:
+        """Compatibility no-op; the simulated robot is always homed."""
+
+    def stow(self) -> None:
+        """Compatibility no-op; the simulated robot has no stow position."""
+        # TODO: Once trajectories are implemented, this could move the robot to a stowed position.
 
     def enable_collision_mgmt(self) -> None:
         """Compatibility no-op; the simulated robot has no collision management."""
