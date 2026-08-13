@@ -8,12 +8,30 @@ from stretch_mujoco.stretch_mujoco_simulator import StretchMujocoSimulator
 
 
 class PrismaticJoint:
-    DEFAULT_VELOCITY = 0.1
-    LIMITS: tuple[float, float] | None = None
-
-    def __init__(self, robot: "Robot", actuator: Actuators) -> None:
+    def __init__(
+        self,
+        robot: "Robot",
+        actuator: Actuators,
+        default_velocity: float,
+        max_velocity: float,
+        limits: tuple[float, float] | None = None,
+        position_tolerance: float = 0.005,
+        velocity_tolerance: float = 0.005,
+        correction_gain: float = 20.0,
+        max_correction: float = 0.015,
+    ) -> None:
         self._robot = robot
         self._actuator = actuator
+        self.default_velocity = default_velocity
+        self.max_velocity = max_velocity
+        self._limits = limits
+        self.position_tolerance = position_tolerance
+        self.velocity_tolerance = velocity_tolerance
+        self.correction_gain = correction_gain
+        self.max_correction = max_correction
+        self._pending_motion: tuple[float, float] | None = None
+        self._motion: tuple[float, float] | None = None
+        self._desired_position = 0.0
 
     @property
     def status(self) -> dict[str, float]:
@@ -25,7 +43,7 @@ class PrismaticJoint:
 
     @property
     def limits(self) -> tuple[float, float]:
-        return self.LIMITS or self._robot._sim.pull_joint_limits()[self._actuator]
+        return self._limits or self._robot._sim.pull_joint_limits()[self._actuator]
 
     @property
     def total_range(self) -> float:
@@ -35,13 +53,14 @@ class PrismaticJoint:
     def _move(self, to: float, at: float) -> None:
         lower, upper = self.limits
         destination = min(max(to, lower), upper)
-        self._robot._pending_motions[self._actuator] = destination, abs(at)
+        velocity = min(abs(at), self.max_velocity)
+        self._pending_motion = destination, velocity
 
     def move_to(self, position_m: float) -> None:
-        self._move(position_m, self.DEFAULT_VELOCITY)
+        self._move(position_m, self.default_velocity)
 
     def move_by(self, distance_m: float) -> None:
-        self._move(self.status["pos"] + distance_m, self.DEFAULT_VELOCITY)
+        self._move(self.status["pos"] + distance_m, self.default_velocity)
 
     def set_velocity(self, velocity_m: float) -> None:
         lower, upper = self.limits
@@ -50,36 +69,58 @@ class PrismaticJoint:
             destination = self.status["pos"]
         self._move(destination, velocity_m)
 
+    def _startup(self, status) -> None:
+        self._desired_position = self._actuator.get_position(status)
+        self._motion = self._desired_position, 0.0
 
-class Lift(PrismaticJoint):
-    def __init__(self, robot: "Robot") -> None:
-        super().__init__(robot, Actuators.lift)
+    def _push_command(self) -> bool:
+        if self._pending_motion is None:
+            return False
+        self._motion = self._pending_motion
+        self._pending_motion = None
+        return True
 
+    def _update(self, status, elapsed: float) -> bool:
+        if self._motion is None:
+            return True
 
-class Arm(PrismaticJoint):
-    LIMITS = (0.0, 0.52)
+        destination, velocity = self._motion
+        remaining = destination - self._desired_position
 
-    def __init__(self, robot: "Robot") -> None:
-        super().__init__(robot, Actuators.arm)
+        if velocity == 0 or abs(remaining) <= velocity * elapsed:
+            self._desired_position = destination
+        else:
+            direction = 1 if remaining > 0 else -1
+            self._desired_position += direction * velocity * elapsed
+
+        actual_position = self._actuator.get_position(status)
+        error = self._desired_position - actual_position
+        correction = min(
+            max(self.correction_gain * error, -self.max_correction),
+            self.max_correction,
+        )
+        lower, upper = self.limits
+        actuator_target = min(max(self._desired_position + correction, lower), upper)
+        self._robot._sim.move_to(self._actuator, actuator_target)
+
+        return (
+            self._desired_position == destination
+            and abs(destination - actual_position) <= self.position_tolerance
+            and abs(self._actuator.get_velocity(status)) <= self.velocity_tolerance
+        )
 
 
 class Robot:
-    POSITION_TOLERANCE = 0.005
-    CORRECTION_GAIN = 20.0
-    MAX_CORRECTION = 0.015
-
     def __init__(self) -> None:
         self._sim = StretchMujocoSimulator()
-        self._pending_motions: dict[Actuators, tuple[float, float]] = {}
-        self._motions: dict[Actuators, tuple[float, float]] = {}
-        self._desired_positions: dict[Actuators, float] = {}
-        self._waiting_for: set[Actuators] = set()
+        self._waiting_for: set[PrismaticJoint] = set()
         self._motion_lock = threading.Lock()
         self._command_complete = threading.Event()
         self._stop_controller = threading.Event()
         self._controller_thread: threading.Thread | None = None
-        self.lift = Lift(self)
-        self.arm = Arm(self)
+        self.lift = PrismaticJoint(self, Actuators.lift, 0.11, 0.15)
+        self.arm = PrismaticJoint(self, Actuators.arm, 0.14, 0.2, limits=(0.0, 0.52))
+        self._joints = (self.lift, self.arm)
 
     def startup(self) -> bool:
         self._sim.start(headless=False)
@@ -87,10 +128,8 @@ class Robot:
             return False
 
         status = self._sim.pull_status()
-        for joint in (self.lift, self.arm):
-            position = joint._actuator.get_position(status)
-            self._motions[joint._actuator] = position, 0.0
-            self._desired_positions[joint._actuator] = position
+        for joint in self._joints:
+            joint._startup(status)
 
         self._controller_thread = threading.Thread(
             target=self._run_joint_controller,
@@ -106,19 +145,16 @@ class Robot:
         """Compatibility no-op; the simulated robot has no collision management."""
 
     def push_command(self) -> None:
-        if not self._pending_motions:
-            return
-
         with self._motion_lock:
-            self._motions.update(self._pending_motions)
-            self._waiting_for = set(self._pending_motions)
-            self._pending_motions.clear()
+            commanded = {joint for joint in self._joints if joint._push_command()}
+            if not commanded:
+                return
+            self._waiting_for = commanded
             self._command_complete.clear()
 
     def _run_joint_controller(self) -> None:
         status = self._sim.pull_status()
         previous_time = status.time
-        limits = {joint._actuator: joint.limits for joint in (self.lift, self.arm)}
 
         while self._sim.is_running() and not self._stop_controller.is_set():
             status = self._sim.pull_status()
@@ -126,37 +162,11 @@ class Robot:
             previous_time = status.time
 
             with self._motion_lock:
-                motions = self._motions.copy()
-
-            for actuator, motion in motions.items():
-                destination, velocity = motion
-                desired_position = self._desired_positions[actuator]
-                remaining = destination - desired_position
-
-                if velocity == 0 or abs(remaining) <= velocity * elapsed:
-                    desired_position = destination
-                else:
-                    desired_position += velocity * elapsed * (1 if remaining > 0 else -1)
-
-                self._desired_positions[actuator] = desired_position
-                actual_position = actuator.get_position(status)
-                error = desired_position - actual_position
-                correction = min(
-                    max(self.CORRECTION_GAIN * error, -self.MAX_CORRECTION),
-                    self.MAX_CORRECTION,
-                )
-                lower, upper = limits[actuator]
-                actuator_target = min(max(desired_position + correction, lower), upper)
-                self._sim.move_to(actuator, actuator_target)
-
-                if (
-                    desired_position == destination
-                    and abs(destination - actual_position) <= self.POSITION_TOLERANCE
-                ):
-                    with self._motion_lock:
-                        self._waiting_for.discard(actuator)
-                        if not self._waiting_for:
-                            self._command_complete.set()
+                for joint in self._joints:
+                    if joint._update(status, elapsed):
+                        self._waiting_for.discard(joint)
+                if not self._waiting_for:
+                    self._command_complete.set()
 
             time.sleep(0.02)
 
