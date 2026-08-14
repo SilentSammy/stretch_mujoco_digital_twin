@@ -210,6 +210,70 @@ class RevoluteJoint(Joint):
         self._move(destination, velocity_r)
 
 
+class GripperJoint(Joint):
+    FINGER_RAD_PER_PCT = 0.003759
+    MOTOR_RAD_PER_FINGER_RAD = 11.42
+    APERTURE_M_PER_FINGER_RAD = 0.342
+    SIM_TO_FINGER_VELOCITY = 15.6
+    MOTION_THRESHOLD = 0.01
+
+    def __init__(self, robot: "Robot") -> None:
+        super().__init__(
+            robot,
+            Actuators.gripper,
+            default_velocity=0.4,
+            max_velocity=0.4,
+            requires_push=False,
+            limits=(-0.376, 0.56),
+            position_tolerance=0.005,
+            velocity_tolerance=float("inf"),
+            correction_gain=1.0,
+            max_correction=0.01,
+        )
+
+    @property
+    def status(self) -> dict:
+        status = self._robot._sim.pull_status()
+        finger_rad = self._actuator.get_position(status)
+        finger_vel = (
+            self._actuator.get_velocity(status) * self.SIM_TO_FINGER_VELOCITY
+        )
+        motor_rad = finger_rad * self.MOTOR_RAD_PER_FINGER_RAD
+        motor_vel = finger_vel * self.MOTOR_RAD_PER_FINGER_RAD
+        return {
+            "timestamp_pc": time.time(),
+            "pos": motor_rad,
+            "vel": motor_vel,
+            "effort": 0.0,
+            "stalled": abs(motor_vel) <= self.MOTION_THRESHOLD,
+            "pos_pct": finger_rad / self.FINGER_RAD_PER_PCT,
+            "gripper_conversion": {
+                "aperture_m": finger_rad * self.APERTURE_M_PER_FINGER_RAD,
+                "finger_rad": finger_rad,
+                "finger_effort": 0.0,
+                "finger_vel": finger_vel,
+            },
+        }
+
+    def move_to(self, position_pct: float, v_r: float | None = None) -> None:
+        velocity = (
+            self.default_velocity
+            if v_r is None
+            else v_r / self.MOTOR_RAD_PER_FINGER_RAD
+        )
+        self._move(position_pct * self.FINGER_RAD_PER_PCT, velocity)
+
+    def move_by(self, distance_pct: float, v_r: float | None = None) -> None:
+        status = self._robot._sim.pull_status()
+        position = self._actuator.get_position(status)
+        velocity = (
+            self.default_velocity
+            if v_r is None
+            else v_r / self.MOTOR_RAD_PER_FINGER_RAD
+        )
+        self._move(position + distance_pct * self.FINGER_RAD_PER_PCT, velocity)
+
+
 class Head:
     POSES = {
         "ahead": (0.0, 0.0),
@@ -274,13 +338,15 @@ class EndOfArm:
             correction_gain=2.0,
             max_correction=0.2,
         )
+        self.stretch_gripper = GripperJoint(robot)
         self.joints = {
             "wrist_pitch": self.wrist_pitch,
             "wrist_roll": self.wrist_roll,
             "wrist_yaw": self.wrist_yaw,
+            "stretch_gripper": self.stretch_gripper,
         }
 
-    def get_joint(self, name: str) -> RevoluteJoint:
+    def get_joint(self, name: str) -> RevoluteJoint | GripperJoint:
         if name not in self.joints:
             raise KeyError(f"Unknown end-of-arm joint: {name}")
         return self.joints[name]
@@ -318,6 +384,7 @@ class Robot:
             self.end_of_arm.wrist_pitch,
             self.end_of_arm.wrist_roll,
             self.end_of_arm.wrist_yaw,
+            self.end_of_arm.stretch_gripper,
         )
 
     def startup(self) -> bool:
