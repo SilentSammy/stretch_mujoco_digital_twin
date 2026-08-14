@@ -2,7 +2,7 @@
   "irl": {
     "base_mappings": {
       "base_forward": [ "w", "s", null, "LY" ],
-      "base_counterclockwise": [ "d", "a", "LX" ],
+      "base_counterclockwise": [ "a", "d", null, "LX" ],
       "lift_up": [ "z", "x", null, "RY" ],
       "arm_out": [ "v", "c", "RX" ],
       "gripper_open": [ "m", "n", "B", "A" ],

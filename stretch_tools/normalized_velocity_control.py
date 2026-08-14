@@ -1,12 +1,12 @@
 class NormalizedVelocityControl:
     MAX_VELOCITIES = {
         "base_forward": 0.1,
-        "base_counterclockwise": 1.8,
-        "lift_up": 0.15,
-        "arm_out": 0.2,
-        "wrist_roll_counterclockwise": 1.2,
+        "base_counterclockwise": 0.6,
+        "lift_up": 0.1,
+        "arm_out": 0.1,
+        "wrist_roll_counterclockwise": 1.0,
         "wrist_pitch_up": 0.8,
-        "wrist_yaw_counterclockwise": 1.2,
+        "wrist_yaw_counterclockwise": 1.0,
         "head_pan_counterclockwise": 2.0,
         "head_tilt_up": 2.0,
         "gripper_open": 4.5,
