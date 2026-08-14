@@ -1,5 +1,6 @@
 """A small ``stretch_body.robot``-compatible facade for MuJoCo."""
 
+import math
 import threading
 import time
 
@@ -274,6 +275,188 @@ class GripperJoint(Joint):
         self._move(position + distance_pct * self.FINGER_RAD_PER_PCT, velocity)
 
 
+class Base:
+    WHEEL_RADIUS = 0.0508
+    WHEEL_SEPARATION = 0.3153
+    MOTOR_GEAR_RATIO = 4.0
+    VELOCITY_SCALE = 1.22
+    LINEAR_ACCELERATION = 0.10
+    ANGULAR_ACCELERATION = 0.4
+
+    def __init__(self, robot: "Robot") -> None:
+        self._robot = robot
+        self._pending_command: tuple | None = None
+        self._motion: tuple | None = None
+        self._left_pos = 0.0
+        self._right_pos = 0.0
+        self._rotation_traveled = 0.0
+        self._last_theta = 0.0
+        self._linear_command = 0.0
+        self._angular_command = 0.0
+
+    @property
+    def status(self) -> dict:
+        status = self._robot._sim.pull_status()
+        linear = status.base.x_vel
+        angular = status.base.theta_vel
+        left_vel, right_vel = self._wheel_velocities(linear, angular)
+        timestamp = time.time()
+        return {
+            "timestamp_pc": timestamp,
+            "x": status.base.x,
+            "y": status.base.y,
+            "theta": status.base.theta % (2 * math.pi),
+            "x_vel": linear,
+            "y_vel": 0.0,
+            "theta_vel": angular,
+            "pose_time_s": status.time,
+            "effort": [0.0, 0.0],
+            "left_wheel": self._wheel_status(
+                timestamp, self._left_pos, left_vel
+            ),
+            "right_wheel": self._wheel_status(
+                timestamp, self._right_pos, right_vel
+            ),
+            "translation_force": 0.0,
+            "rotation_torque": 0.0,
+        }
+
+    def translate_by(
+        self,
+        distance_m: float,
+        v_m: float | None = None,
+        a_m: float | None = None,
+    ) -> None:
+        self._pending_command = "translate", distance_m, 0.11 if v_m is None else v_m
+
+    def rotate_by(
+        self,
+        angle_rad: float,
+        v_r: float | None = None,
+        a_r: float | None = None,
+    ) -> None:
+        self._pending_command = "rotate", angle_rad, 0.4 if v_r is None else v_r
+
+    def set_velocity(self, linear_m_s: float, angular_rad_s: float) -> None:
+        self._pending_command = "velocity", linear_m_s, angular_rad_s
+
+    def _startup(self) -> None:
+        self._motion = None
+
+    def _push_command(self) -> bool:
+        if self._pending_command is None:
+            return False
+
+        command = self._pending_command
+        self._pending_command = None
+        status = self._robot._sim.pull_status().base
+
+        if command[0] == "velocity":
+            self._motion = command
+            return False
+
+        self._motion = command + (status.x, status.y, status.theta)
+        self._linear_command = status.x_vel
+        self._angular_command = status.theta_vel
+        self._rotation_traveled = 0.0
+        self._last_theta = status.theta
+        return True
+
+    def _update(self, status, elapsed: float) -> bool:
+        left_vel, right_vel = self._wheel_velocities(
+            status.base.x_vel, status.base.theta_vel
+        )
+        self._left_pos += left_vel * elapsed
+        self._right_pos += right_vel * elapsed
+
+        if self._motion is None:
+            return True
+
+        if self._motion[0] == "velocity":
+            linear, angular = self._motion[1:]
+            self._ramp_velocity(linear, angular, elapsed)
+            return True
+
+        kind, amount, speed, start_x, start_y, start_theta = self._motion
+        if kind == "translate":
+            dx = status.base.x - start_x
+            dy = status.base.y - start_y
+            traveled = dx * math.cos(start_theta) + dy * math.sin(start_theta)
+            remaining = abs(amount) - abs(traveled)
+            command = min(
+                abs(speed),
+                math.sqrt(max(2 * self.LINEAR_ACCELERATION * remaining, 0.0)),
+            )
+            linear = command if amount >= 0 else -command
+            angular = 0.0
+            settled = abs(status.base.x_vel) <= 0.005
+        else:
+            delta = (status.base.theta - self._last_theta + math.pi) % (
+                2 * math.pi
+            ) - math.pi
+            self._rotation_traveled += delta
+            self._last_theta = status.base.theta
+            remaining = abs(amount) - abs(self._rotation_traveled)
+            command = min(
+                abs(speed),
+                math.sqrt(max(2 * self.ANGULAR_ACCELERATION * remaining, 0.0)),
+            )
+            linear = 0.0
+            angular = command if amount >= 0 else -command
+            settled = abs(status.base.theta_vel) <= 0.01
+
+        if remaining > 0:
+            self._ramp_velocity(linear, angular, elapsed)
+            return False
+
+        self._ramp_velocity(0.0, 0.0, elapsed)
+        if settled:
+            self._motion = None
+            return True
+        return False
+
+    def _ramp_velocity(self, linear: float, angular: float, elapsed: float) -> None:
+        self._linear_command = self._approach(
+            self._linear_command,
+            linear,
+            self.LINEAR_ACCELERATION * elapsed,
+        )
+        self._angular_command = self._approach(
+            self._angular_command,
+            angular,
+            self.ANGULAR_ACCELERATION * elapsed,
+        )
+        self._robot._sim.set_base_velocity(
+            self._linear_command * self.VELOCITY_SCALE,
+            self._angular_command * self.VELOCITY_SCALE,
+        )
+
+    @staticmethod
+    def _approach(current: float, target: float, step: float) -> float:
+        if abs(target - current) <= step:
+            return target
+        return current + (step if target > current else -step)
+
+    def _wheel_velocities(self, linear: float, angular: float) -> tuple[float, float]:
+        left = linear - angular * self.WHEEL_SEPARATION / 2
+        right = linear + angular * self.WHEEL_SEPARATION / 2
+        scale = self.MOTOR_GEAR_RATIO / self.WHEEL_RADIUS
+        return left * scale, right * scale
+
+    @staticmethod
+    def _wheel_status(timestamp: float, position: float, velocity: float) -> dict:
+        moving = abs(velocity) > 0.05
+        return {
+            "timestamp": timestamp,
+            "pos": position,
+            "vel": velocity,
+            "near_vel_setpoint": not moving,
+            "is_moving": moving,
+            "is_moving_filtered": moving,
+            "is_mg_moving": moving,
+        }
+
+
 class Head:
     POSES = {
         "ahead": (0.0, 0.0),
@@ -361,11 +544,12 @@ class EndOfArm:
 class Robot:
     def __init__(self) -> None:
         self._sim = StretchMujocoSimulator()
-        self._waiting_for: set[Joint] = set()
+        self._waiting_for: set[Joint | Base] = set()
         self._motion_lock = threading.Lock()
         self._command_complete = threading.Event()
         self._stop_controller = threading.Event()
         self._controller_thread: threading.Thread | None = None
+        self.base = Base(self)
         self.lift = PrismaticJoint(self, Actuators.lift, 0.11, 0.15)
         self.arm = PrismaticJoint(
             self,
@@ -395,6 +579,7 @@ class Robot:
         status = self._sim.pull_status()
         for joint in self._joints:
             joint._startup(status)
+        self.base._startup()
 
         self._controller_thread = threading.Thread(
             target=self._run_joint_controller,
@@ -421,8 +606,8 @@ class Robot:
         """Compatibility no-op; the simulated robot has no collision management."""
 
     def get_status(self) -> dict[str, dict]:
-        # TODO: Add key: base
         return {
+            "base": self.base.status,
             "arm": self.arm.status,
             "lift": self.lift.status,
             "head": {
@@ -442,6 +627,8 @@ class Robot:
                 for joint in self._joints
                 if joint.requires_push and joint._push_command()
             }
+            if self.base._push_command():
+                commanded.add(self.base)
             if not commanded:
                 return
             self._waiting_for.update(commanded)
@@ -463,6 +650,8 @@ class Robot:
             previous_time = status.time
 
             with self._motion_lock:
+                if self.base._update(status, elapsed):
+                    self._waiting_for.discard(self.base)
                 for joint in self._joints:
                     if joint._update(status, elapsed):
                         self._waiting_for.discard(joint)
