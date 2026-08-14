@@ -6,14 +6,15 @@ import time
 from stretch_mujoco.enums.actuators import Actuators
 from stretch_mujoco.stretch_mujoco_simulator import StretchMujocoSimulator
 
-# TODO: Trajectory support
-class PrismaticJoint:
+
+class Joint:
     def __init__(
         self,
         robot: "Robot",
         actuator: Actuators,
         default_velocity: float,
         max_velocity: float,
+        requires_push: bool,
         limits: tuple[float, float] | None = None,
         position_tolerance: float = 0.005,
         velocity_tolerance: float = 0.005,
@@ -24,6 +25,7 @@ class PrismaticJoint:
         self._actuator = actuator
         self.default_velocity = default_velocity
         self.max_velocity = max_velocity
+        self.requires_push = requires_push
         self._limits = limits
         self.position_tolerance = position_tolerance
         self.velocity_tolerance = velocity_tolerance
@@ -75,24 +77,8 @@ class PrismaticJoint:
         destination = min(max(to, lower), upper)
         velocity = min(abs(at), self.max_velocity)
         self._pending_motion = destination, velocity
-
-    def home(self) -> None:
-        """Compatibility no-op; the simulated robot is always homed."""
-        pass
-
-    def move_to(self, position_m: float, v_m: float | None = None) -> None:
-        self._move(position_m, self.default_velocity if v_m is None else v_m)
-
-    def move_by(self, distance_m: float, v_m: float | None = None) -> None:
-        velocity = self.default_velocity if v_m is None else v_m
-        self._move(self.status["pos"] + distance_m, velocity)
-
-    def set_velocity(self, velocity_m: float) -> None:
-        lower, upper = self.limits
-        destination = upper if velocity_m > 0 else lower
-        if velocity_m == 0:
-            destination = self.status["pos"]
-        self._move(destination, velocity_m)
+        if not self.requires_push:
+            self._robot._activate_joint(self)
 
     def _startup(self, status) -> None:
         self._desired_position = self._actuator.get_position(status)
@@ -135,17 +121,158 @@ class PrismaticJoint:
         )
 
 
+class PrismaticJoint(Joint):
+    def __init__(
+        self,
+        robot: "Robot",
+        actuator: Actuators,
+        default_velocity: float,
+        max_velocity: float,
+        limits: tuple[float, float] | None = None,
+    ) -> None:
+        super().__init__(
+            robot,
+            actuator,
+            default_velocity,
+            max_velocity,
+            requires_push=True,
+            limits=limits,
+        )
+
+    # TODO: Trajectory support
+    def home(self) -> None:
+        """Compatibility no-op; the simulated robot is always homed."""
+
+    def move_to(self, position_m: float, v_m: float | None = None) -> None:
+        self._move(position_m, self.default_velocity if v_m is None else v_m)
+
+    def move_by(self, distance_m: float, v_m: float | None = None) -> None:
+        velocity = self.default_velocity if v_m is None else v_m
+        self._move(self.status["pos"] + distance_m, velocity)
+
+    def set_velocity(self, velocity_m: float) -> None:
+        lower, upper = self.limits
+        destination = upper if velocity_m > 0 else lower
+        if velocity_m == 0:
+            destination = self.status["pos"]
+        self._move(destination, velocity_m)
+
+
+class RevoluteJoint(Joint):
+    MOTION_THRESHOLD = 0.01
+
+    def __init__(
+        self,
+        robot: "Robot",
+        actuator: Actuators,
+        default_velocity: float,
+        max_velocity: float,
+        limits: tuple[float, float] | None = None,
+    ) -> None:
+        super().__init__(
+            robot,
+            actuator,
+            default_velocity,
+            max_velocity,
+            requires_push=False,
+            limits=limits,
+            position_tolerance=0.01,
+            velocity_tolerance=float("inf"),
+            correction_gain=0.0,
+            max_correction=0.0,
+        )
+
+    @property
+    def status(self) -> dict:
+        status = self._robot._sim.pull_status()
+        velocity = self._actuator.get_velocity(status)
+        return {
+            "timestamp_pc": time.time(),
+            "pos": self._actuator.get_position(status),
+            "vel": velocity,
+            "stalled": abs(velocity) <= self.MOTION_THRESHOLD,
+        }
+
+    def move_to(self, position_rad: float, v_r: float | None = None) -> None:
+        self._move(position_rad, self.default_velocity if v_r is None else v_r)
+
+    def move_by(self, angle_rad: float, v_r: float | None = None) -> None:
+        velocity = self.default_velocity if v_r is None else v_r
+        self._move(self.status["pos"] + angle_rad, velocity)
+
+    def set_velocity(self, velocity_r: float) -> None:
+        lower, upper = self.limits
+        destination = upper if velocity_r > 0 else lower
+        if velocity_r == 0:
+            destination = self.status["pos"]
+        self._move(destination, velocity_r)
+
+
+class Head:
+    POSES = {
+        "ahead": (0.0, 0.0),
+        "tool": (-1.57, -0.79),
+        "wheels": (0.0, -1.50),
+        "back": (-3.14, 0.0),
+    }
+
+    def __init__(self, robot: "Robot") -> None:
+        self.head_pan = RevoluteJoint(
+            robot,
+            Actuators.head_pan,
+            default_velocity=2.0,
+            max_velocity=2.0,
+        )
+        self.head_tilt = RevoluteJoint(
+            robot,
+            Actuators.head_tilt,
+            default_velocity=2.0,
+            max_velocity=2.0,
+        )
+        self.joints = ["head_pan", "head_tilt"]
+
+    def get_joint(self, name: str) -> RevoluteJoint:
+        if name not in self.joints:
+            raise KeyError(f"Unknown head joint: {name}")
+        return getattr(self, name)
+
+    def move_to(self, name: str, position_rad: float, v_r: float | None = None) -> None:
+        self.get_joint(name).move_to(position_rad, v_r)
+
+    def move_by(self, name: str, angle_rad: float, v_r: float | None = None) -> None:
+        self.get_joint(name).move_by(angle_rad, v_r)
+
+    def pose(self, name: str) -> None:
+        if name not in self.POSES:
+            raise KeyError(f"Unknown head pose: {name}")
+        pan, tilt = self.POSES[name]
+        self.head_pan.move_to(pan)
+        self.head_tilt.move_to(tilt)
+
+
 class Robot:
     def __init__(self) -> None:
         self._sim = StretchMujocoSimulator()
-        self._waiting_for: set[PrismaticJoint] = set()
+        self._waiting_for: set[Joint] = set()
         self._motion_lock = threading.Lock()
         self._command_complete = threading.Event()
         self._stop_controller = threading.Event()
         self._controller_thread: threading.Thread | None = None
         self.lift = PrismaticJoint(self, Actuators.lift, 0.11, 0.15)
-        self.arm = PrismaticJoint(self, Actuators.arm, 0.14, 0.2, limits=(0.0, 0.52))
-        self._joints = (self.lift, self.arm)
+        self.arm = PrismaticJoint(
+            self,
+            Actuators.arm,
+            0.14,
+            0.2,
+            limits=(0.0, 0.52),
+        )
+        self.head = Head(self)
+        self._joints = (
+            self.lift,
+            self.arm,
+            self.head.head_pan,
+            self.head.head_tilt,
+        )
 
     def startup(self) -> bool:
         self._sim.start(headless=False)
@@ -180,20 +307,34 @@ class Robot:
     def disable_collision_mgmt(self) -> None:
         """Compatibility no-op; the simulated robot has no collision management."""
 
-    def get_status(self) -> dict[str, dict[str, float]]:
-        # TODO: Add keys: base, head, end_of_arm
+    def get_status(self) -> dict[str, dict]:
+        # TODO: Add keys: base, end_of_arm
         return {
             "arm": self.arm.status,
             "lift": self.lift.status,
+            "head": {
+                "head_pan": self.head.head_pan.status,
+                "head_tilt": self.head.head_tilt.status,
+            },
         }
 
     def push_command(self) -> None:
         with self._motion_lock:
-            commanded = {joint for joint in self._joints if joint._push_command()}
+            commanded = {
+                joint
+                for joint in self._joints
+                if joint.requires_push and joint._push_command()
+            }
             if not commanded:
                 return
-            self._waiting_for = commanded
+            self._waiting_for.update(commanded)
             self._command_complete.clear()
+
+    def _activate_joint(self, joint: Joint) -> None:
+        with self._motion_lock:
+            if joint._push_command():
+                self._waiting_for.add(joint)
+                self._command_complete.clear()
 
     def _run_joint_controller(self) -> None:
         status = self._sim.pull_status()

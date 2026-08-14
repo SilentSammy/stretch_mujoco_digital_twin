@@ -1,12 +1,16 @@
 import time
-import stretch_body.robot
+
+try:
+    import stretch_body.robot as robot
+except ImportError:
+    import stretch_mujoco_api.robot as robot
 
 if __name__ == "__main__":
-    robot = stretch_body.robot.Robot()
+    robot = robot.Robot()
     robot.startup()
     robot.enable_collision_mgmt()
     try:
-        pass  # Breakpoint for debugging
+        pass # Breakpoint for debugging
 
         # --- LIFT COMMANDS --- (arm works the same way)
         print("Lift status")
