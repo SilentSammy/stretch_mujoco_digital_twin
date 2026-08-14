@@ -279,7 +279,8 @@ class Base:
     WHEEL_RADIUS = 0.0508
     WHEEL_SEPARATION = 0.3153
     MOTOR_GEAR_RATIO = 4.0
-    VELOCITY_SCALE = 1.22
+    POSITION_VELOCITY_SCALE = 1.22
+    CONTINUOUS_VELOCITY_SCALE = 1.53
     LINEAR_ACCELERATION = 0.10
     ANGULAR_ACCELERATION = 0.4
 
@@ -374,7 +375,11 @@ class Base:
 
         if self._motion[0] == "velocity":
             linear, angular = self._motion[1:]
-            self._ramp_velocity(linear, angular, elapsed)
+            self._linear_command = linear
+            self._angular_command = angular
+            self._command_velocity(
+                linear, angular, self.CONTINUOUS_VELOCITY_SCALE
+            )
             return True
 
         kind, amount, speed, start_x, start_y, start_theta = self._motion
@@ -426,9 +431,18 @@ class Base:
             angular,
             self.ANGULAR_ACCELERATION * elapsed,
         )
+        self._command_velocity(
+            self._linear_command,
+            self._angular_command,
+            self.POSITION_VELOCITY_SCALE,
+        )
+
+    def _command_velocity(
+        self, linear: float, angular: float, scale: float
+    ) -> None:
         self._robot._sim.set_base_velocity(
-            self._linear_command * self.VELOCITY_SCALE,
-            self._angular_command * self.VELOCITY_SCALE,
+            linear * scale,
+            angular * scale,
         )
 
     @staticmethod
