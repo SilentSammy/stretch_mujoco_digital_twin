@@ -274,6 +274,13 @@ class GripperJoint(Joint):
         )
         self._move(position + distance_pct * self.FINGER_RAD_PER_PCT, velocity)
 
+    def set_velocity(self, velocity_r: float) -> None:
+        lower, upper = self.limits
+        destination = upper if velocity_r > 0 else lower
+        if velocity_r == 0:
+            destination = self._actuator.get_position(self._robot._sim.pull_status())
+        self._move(destination, velocity_r / self.MOTOR_RAD_PER_FINGER_RAD)
+
 
 class Base:
     WHEEL_RADIUS = 0.0508
@@ -281,6 +288,8 @@ class Base:
     MOTOR_GEAR_RATIO = 4.0
     POSITION_VELOCITY_SCALE = 1.22
     CONTINUOUS_VELOCITY_SCALE = 1.53
+    MAX_LINEAR_VELOCITY = 0.1
+    MAX_ANGULAR_VELOCITY = 1.8
     LINEAR_ACCELERATION = 0.10
     ANGULAR_ACCELERATION = 0.4
 
@@ -328,7 +337,12 @@ class Base:
         v_m: float | None = None,
         a_m: float | None = None,
     ) -> None:
-        self._pending_command = "translate", distance_m, 0.11 if v_m is None else v_m
+        velocity = self.MAX_LINEAR_VELOCITY if v_m is None else v_m
+        self._pending_command = (
+            "translate",
+            distance_m,
+            min(abs(velocity), self.MAX_LINEAR_VELOCITY),
+        )
 
     def rotate_by(
         self,
@@ -336,10 +350,29 @@ class Base:
         v_r: float | None = None,
         a_r: float | None = None,
     ) -> None:
-        self._pending_command = "rotate", angle_rad, 0.4 if v_r is None else v_r
+        velocity = 0.4 if v_r is None else v_r
+        self._pending_command = (
+            "rotate",
+            angle_rad,
+            min(abs(velocity), self.MAX_ANGULAR_VELOCITY),
+        )
 
     def set_velocity(self, linear_m_s: float, angular_rad_s: float) -> None:
+        linear_m_s = max(
+            -self.MAX_LINEAR_VELOCITY,
+            min(linear_m_s, self.MAX_LINEAR_VELOCITY),
+        )
+        angular_rad_s = max(
+            -self.MAX_ANGULAR_VELOCITY,
+            min(angular_rad_s, self.MAX_ANGULAR_VELOCITY),
+        )
         self._pending_command = "velocity", linear_m_s, angular_rad_s
+
+    def set_translate_velocity(self, velocity_m: float) -> None:
+        self.set_velocity(velocity_m, 0.0)
+
+    def set_rotational_velocity(self, velocity_r: float) -> None:
+        self.set_velocity(0.0, velocity_r)
 
     def _startup(self) -> None:
         self._motion = None
