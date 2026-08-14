@@ -168,6 +168,8 @@ class RevoluteJoint(Joint):
         default_velocity: float,
         max_velocity: float,
         limits: tuple[float, float] | None = None,
+        correction_gain: float = 0.0,
+        max_correction: float = 0.0,
     ) -> None:
         super().__init__(
             robot,
@@ -178,8 +180,8 @@ class RevoluteJoint(Joint):
             limits=limits,
             position_tolerance=0.01,
             velocity_tolerance=float("inf"),
-            correction_gain=0.0,
-            max_correction=0.0,
+            correction_gain=correction_gain,
+            max_correction=max_correction,
         )
 
     @property
@@ -250,6 +252,46 @@ class Head:
         self.head_tilt.move_to(tilt)
 
 
+class EndOfArm:
+    def __init__(self, robot: "Robot") -> None:
+        self.wrist_pitch = RevoluteJoint(
+            robot,
+            Actuators.wrist_pitch,
+            default_velocity=0.8,
+            max_velocity=0.8,
+        )
+        self.wrist_roll = RevoluteJoint(
+            robot,
+            Actuators.wrist_roll,
+            default_velocity=1.2,
+            max_velocity=1.2,
+        )
+        self.wrist_yaw = RevoluteJoint(
+            robot,
+            Actuators.wrist_yaw,
+            default_velocity=1.2,
+            max_velocity=1.2,
+            correction_gain=2.0,
+            max_correction=0.2,
+        )
+        self.joints = {
+            "wrist_pitch": self.wrist_pitch,
+            "wrist_roll": self.wrist_roll,
+            "wrist_yaw": self.wrist_yaw,
+        }
+
+    def get_joint(self, name: str) -> RevoluteJoint:
+        if name not in self.joints:
+            raise KeyError(f"Unknown end-of-arm joint: {name}")
+        return self.joints[name]
+
+    def move_to(self, name: str, position_rad: float, v_r: float | None = None) -> None:
+        self.get_joint(name).move_to(position_rad, v_r)
+
+    def move_by(self, name: str, angle_rad: float, v_r: float | None = None) -> None:
+        self.get_joint(name).move_by(angle_rad, v_r)
+
+
 class Robot:
     def __init__(self) -> None:
         self._sim = StretchMujocoSimulator()
@@ -267,11 +309,15 @@ class Robot:
             limits=(0.0, 0.52),
         )
         self.head = Head(self)
+        self.end_of_arm = EndOfArm(self)
         self._joints = (
             self.lift,
             self.arm,
             self.head.head_pan,
             self.head.head_tilt,
+            self.end_of_arm.wrist_pitch,
+            self.end_of_arm.wrist_roll,
+            self.end_of_arm.wrist_yaw,
         )
 
     def startup(self) -> bool:
@@ -308,13 +354,17 @@ class Robot:
         """Compatibility no-op; the simulated robot has no collision management."""
 
     def get_status(self) -> dict[str, dict]:
-        # TODO: Add keys: base, end_of_arm
+        # TODO: Add key: base
         return {
             "arm": self.arm.status,
             "lift": self.lift.status,
             "head": {
                 "head_pan": self.head.head_pan.status,
                 "head_tilt": self.head.head_tilt.status,
+            },
+            "end_of_arm": {
+                name: joint.status
+                for name, joint in self.end_of_arm.joints.items()
             },
         }
 
