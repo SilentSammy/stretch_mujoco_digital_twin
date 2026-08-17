@@ -4,21 +4,15 @@ import numpy as np
 import math
 import json
 import os
+import platform
 import time
 from pathlib import Path
 
 
 class TeleopProvider:
     """Provides teleoperation commands as normalized joint velocities."""
-    def __init__(self, is_stretch_env=None, config_file='teleop_mappings.json'):
-        if is_stretch_env is None:
-            try:
-                import stretch_body
-
-                is_stretch_env = True
-            except ImportError:
-                is_stretch_env = False
-        self.is_stretch_env = is_stretch_env
+    def __init__(self, is_linux=None, config_file='teleop_mappings.json'):
+        self.is_linux = platform.system() == "Linux" if is_linux is None else is_linux
         
         # Store config file in this script's directory
         script_dir = Path(__file__).parent
@@ -83,11 +77,11 @@ class TeleopProvider:
         with open(self.config_file, 'r') as f:
             config = json.load(f)
         
-        # Start with 'irl' config (base/default)
+        # The legacy 'irl' section contains the Linux mappings.
         irl_config = config.get('irl', config)  # Fallback to root if no 'irl' key
         
-        # If not stretch_env (i.e., simulation), recursively override with 'sim' config
-        if not self.is_stretch_env and 'sim' in config:
+        # Non-Linux platforms use the legacy 'sim' overrides.
+        if not self.is_linux and 'sim' in config:
             final_config = self._recursive_merge(irl_config, config['sim'])
         else:
             final_config = irl_config

@@ -290,8 +290,8 @@ class Base:
     CONTINUOUS_VELOCITY_SCALE = 1.53
     MAX_LINEAR_VELOCITY = 0.1
     MAX_ANGULAR_VELOCITY = 1.8
-    LINEAR_ACCELERATION = 0.10
-    ANGULAR_ACCELERATION = 0.4
+    LINEAR_ACCELERATION = 0.002
+    ANGULAR_ACCELERATION = 0.001
 
     def __init__(self, robot: "Robot") -> None:
         self._robot = robot

@@ -38,7 +38,7 @@
       <freejoint/>
       <geom type="cylinder" size=".02 .04 .04" mass=".5" rgba=".8 .2 .2 1"/>
     </body>
-    <body name="android_lego" pos="0.18 -0.55 0.75" gravcomp="1">
+    <!-- <body name="android_lego" pos="0.18 -0.55 0.75" gravcomp="1">
       <freejoint/>
       <geom name="android_lego_visual" type="mesh" mesh="android_lego_mesh"
             material="android_lego_material"
@@ -46,6 +46,6 @@
       <geom name="android_lego_collision" type="box"
             pos="0 0 0.045" size="0.028 0.020 0.042"
             mass="0.10" rgba="1 0 0 0" friction="1 0.005 0.0001"/>
-    </body>
+    </body> -->
   </worldbody>
 </mujoco>
