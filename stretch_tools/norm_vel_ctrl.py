@@ -48,7 +48,22 @@ class NormVelController:
         }
 
     def set_command(self, command: dict[str, float]) -> None:
+        base_names = {"base_forward", "base_counterclockwise"}
+        combined_base = base_names <= command.keys()
+        if combined_base:
+            linear = command["base_forward"]
+            angular = command["base_counterclockwise"]
+            if self.safe_mode:
+                linear = max(-self.SAFE_BASE_LIMIT, min(linear, self.SAFE_BASE_LIMIT))
+                angular = max(-self.SAFE_BASE_LIMIT, min(angular, self.SAFE_BASE_LIMIT))
+            self.robot.base.set_velocity(
+                linear * self.MAX_VELOCITIES["base_forward"],
+                angular * self.MAX_VELOCITIES["base_counterclockwise"],
+            )
+
         for name, normalized in command.items():
+            if name in base_names and combined_base:
+                continue
             if self.safe_mode and name.startswith("base_"):
                 normalized = max(
                     -self.SAFE_BASE_LIMIT,
