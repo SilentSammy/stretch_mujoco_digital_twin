@@ -4,7 +4,7 @@
   <!-- <option integrator="implicitfast" impratio="10" cone="elliptic" noslip_iterations="3">
     <flag multiccd="enable"/>
   </option> -->
-  <option timestep="0.005" integrator="implicitfast" impratio="20" cone="elliptic">
+  <option integrator="implicitfast" impratio="20" cone="elliptic">
     <flag multiccd="enable"/>
   </option>
   <size njmax="5000" nconmax="5000" />
@@ -15,7 +15,7 @@
       <general biastype="affine"/>
       <default class="wheel">
         <joint axis="0 0 1" damping="0.1" frictionloss="35" armature="0.1" stiffness="0.01"/>
-        <velocity gear="3" kv="20" ctrlrange="-10 10"/>
+        <velocity gear="3" kv="20" ctrlrange="-6 6"/>
       </default>
       <default class="lift">
         <joint type="slide" axis="0 0 1" damping="35" stiffness="0.03" armature="0.01" range="0.0 1.1" frictionloss="1.5"/>

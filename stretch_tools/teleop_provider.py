@@ -7,12 +7,17 @@ import os
 import platform
 import time
 from pathlib import Path
+from .norm_vel_ctrl import merge_proportional
 
 
 class TeleopProvider:
     """Provides teleoperation commands as normalized joint velocities."""
-    def __init__(self, is_linux=None, config_file='teleop_mappings.json'):
+    BASE_JOINTS = {'base_forward', 'base_counterclockwise'}
+    STICK_DEADZONE = math.radians(15.0)
+
+    def __init__(self, is_linux=None, config_file='teleop_mappings.json', robot=None):
         self.is_linux = platform.system() == "Linux" if is_linux is None else is_linux
+        self.robot = robot
         
         # Store config file in this script's directory
         script_dir = Path(__file__).parent
@@ -151,7 +156,23 @@ class TeleopProvider:
         defaults = (None, None, None, None, 1.0, 1.0)
         return mapping + defaults[len(mapping):]
 
-    def _get_joint_velocity(self, mapping):
+    def _get_stick(self, x_axis, y_axis):
+        """Snap a stick to cardinal directions within the angular deadzone."""
+        x = ci.get_axis(x_axis)
+        y = ci.get_axis(y_axis)
+        radius = min(1.0, math.hypot(x, y))
+        if radius == 0.0:
+            return {x_axis: 0.0, y_axis: 0.0}
+
+        angle = math.atan2(y, x)
+        cardinal = round(angle / (math.pi / 2.0)) * (math.pi / 2.0)
+        if abs(angle - cardinal) <= self.STICK_DEADZONE:
+            x = radius * math.cos(cardinal)
+            y = radius * math.sin(cardinal)
+
+        return {x_axis: x, y_axis: y}
+
+    def _get_joint_velocity(self, mapping, stick=None, throttle_base=False):
         """Get normalized velocity from a joint mapping.
         
         Args:
@@ -161,7 +182,33 @@ class TeleopProvider:
             float: Normalized velocity from -1.0 to 1.0
         """
         normalized = self._normalize_mapping(mapping)
+        if stick is not None:
+            high_key, low_key, high_game, low_game, keyboard_scale, game_scale = normalized
+            keyboard = ci.get_bipolar_ctrl(
+                high_key, low_key, None, None, keyboard_scale, 1.0
+            )
+            joystick = (
+                stick.get(high_game, 0.0)
+                - stick.get(low_game, 0.0)
+            ) * game_scale
+            throttle = self._get_base_throttle() if throttle_base else 1.0
+            return max(-1.0, min(1.0, keyboard + joystick * throttle))
         return ci.get_bipolar_ctrl(*normalized)
+
+    def _get_base_throttle(self):
+        """Limit base speed unless RT boost is safe at the current lift height."""
+        try:
+            lift_is_low = self.robot.lift.status['pos'] < 0.34
+        except (AttributeError, KeyError, TypeError):
+            lift_is_low = False
+
+        boost = 1.0 + 2.0 * ci.get_axis('RT') if lift_is_low else 1.0
+        return boost / 3.0
+
+    def _get_precision_scale(self):
+        """Scale all movement from full speed down to 10% using LT."""
+        trigger = max(0.0, min(1.0, ci.get_axis('LT')))
+        return 1.0 - 0.9 * trigger
 
     def _button_pressed(self, button):
         """Check if a button was just pressed (rising edge).
@@ -204,8 +251,19 @@ class TeleopProvider:
         self._check_toggles()
         
         result = {}
+        precision_scale = self._get_precision_scale()
+        sticks = {
+            **self._get_stick('LX', 'LY'),
+            **self._get_stick('RX', 'RY'),
+        }
         for joint, mapping in self.joint_mappings.items():
-            result[joint] = self._get_joint_velocity(mapping)
+            normalized = self._normalize_mapping(mapping)
+            stick = sticks if normalized[2] in sticks or normalized[3] in sticks else None
+            result[joint] = precision_scale * self._get_joint_velocity(
+                mapping,
+                stick=stick,
+                throttle_base=joint in self.BASE_JOINTS,
+            )
         return result
 
     def get_manual_override(self, cmd_autonomous):

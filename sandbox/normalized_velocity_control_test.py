@@ -5,7 +5,7 @@ try:
 except ImportError:
     import stretch_mujoco_api.robot as robot
 
-from stretch_tools.normalized_velocity_control import NormalizedVelocityControl
+from stretch_tools.norm_vel_ctrl import NormVelController
 
 
 ACTIVE_TIME = 3.0
@@ -15,7 +15,7 @@ NORMALIZED_VELOCITY = 0.5
 
 
 def zero_command():
-    return {name: 0.0 for name in NormalizedVelocityControl.MAX_VELOCITIES}
+    return {name: 0.0 for name in NormVelController.MAX_VELOCITIES}
 
 
 def get_status(stretch, name):
@@ -70,10 +70,10 @@ def main():
         return
 
     stretch.enable_collision_mgmt()
-    control = NormalizedVelocityControl(stretch)
+    control = NormVelController(stretch)
     names = [
         name
-        for name in NormalizedVelocityControl.MAX_VELOCITIES
+        for name in NormVelController.MAX_VELOCITIES
         if name != "base_forward"
     ]
 

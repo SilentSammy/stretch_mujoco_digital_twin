@@ -287,11 +287,12 @@ class Base:
     WHEEL_SEPARATION = 0.3153
     MOTOR_GEAR_RATIO = 4.0
     POSITION_VELOCITY_SCALE = 1.22
-    CONTINUOUS_VELOCITY_SCALE = 1.53
-    MAX_LINEAR_VELOCITY = 0.1
-    MAX_ANGULAR_VELOCITY = 1.8
-    LINEAR_ACCELERATION = 0.002
-    ANGULAR_ACCELERATION = 0.001
+    CONTINUOUS_VELOCITY_SCALE = 1.10
+    DEFAULT_LINEAR_VELOCITY = 0.1
+    MAX_LINEAR_VELOCITY = 0.3
+    MAX_ANGULAR_VELOCITY = 1.9
+    LINEAR_ACCELERATION = 0.13
+    ANGULAR_ACCELERATION = 0.83
 
     def __init__(self, robot: "Robot") -> None:
         self._robot = robot
@@ -337,7 +338,7 @@ class Base:
         v_m: float | None = None,
         a_m: float | None = None,
     ) -> None:
-        velocity = self.MAX_LINEAR_VELOCITY if v_m is None else v_m
+        velocity = self.DEFAULT_LINEAR_VELOCITY if v_m is None else v_m
         self._pending_command = (
             "translate",
             distance_m,
@@ -369,10 +370,18 @@ class Base:
         self._pending_command = "velocity", linear_m_s, angular_rad_s
 
     def set_translate_velocity(self, velocity_m: float) -> None:
-        self.set_velocity(velocity_m, 0.0)
+        _, angular = self._velocity_targets()
+        self.set_velocity(velocity_m, angular)
 
     def set_rotational_velocity(self, velocity_r: float) -> None:
-        self.set_velocity(0.0, velocity_r)
+        linear, _ = self._velocity_targets()
+        self.set_velocity(linear, velocity_r)
+
+    def _velocity_targets(self) -> tuple[float, float]:
+        for command in (self._pending_command, self._motion):
+            if command is not None and command[0] == "velocity":
+                return command[1], command[2]
+        return 0.0, 0.0
 
     def _startup(self) -> None:
         self._motion = None
@@ -408,10 +417,11 @@ class Base:
 
         if self._motion[0] == "velocity":
             linear, angular = self._motion[1:]
-            self._linear_command = linear
-            self._angular_command = angular
-            self._command_velocity(
-                linear, angular, self.CONTINUOUS_VELOCITY_SCALE
+            self._ramp_velocity(
+                linear,
+                angular,
+                elapsed,
+                self.CONTINUOUS_VELOCITY_SCALE,
             )
             return True
 
@@ -453,21 +463,28 @@ class Base:
             return True
         return False
 
-    def _ramp_velocity(self, linear: float, angular: float, elapsed: float) -> None:
+    def _ramp_velocity(
+        self,
+        linear: float,
+        angular: float,
+        elapsed: float,
+        scale: float | None = None,
+    ) -> None:
+        scale = self.POSITION_VELOCITY_SCALE if scale is None else scale
         self._linear_command = self._approach(
             self._linear_command,
             linear,
-            self.LINEAR_ACCELERATION * elapsed,
+            self.LINEAR_ACCELERATION * elapsed / scale,
         )
         self._angular_command = self._approach(
             self._angular_command,
             angular,
-            self.ANGULAR_ACCELERATION * elapsed,
+            self.ANGULAR_ACCELERATION * elapsed / scale,
         )
         self._command_velocity(
             self._linear_command,
             self._angular_command,
-            self.POSITION_VELOCITY_SCALE,
+            scale,
         )
 
     def _command_velocity(
@@ -643,8 +660,19 @@ class Robot:
         """Compatibility no-op; the simulated robot is always homed."""
 
     def stow(self) -> None:
-        """Compatibility no-op; the simulated robot has no stow position."""
-        # TODO: Once trajectories are implemented, this could move the robot to a stowed position.
+        """Move the simulated robot into the physical robot's stow pose."""
+        self.head.pose("ahead")
+        self.arm.move_to(0.0)
+        self.push_command()
+        self.wait_command()
+
+        self.end_of_arm.wrist_pitch.move_to(-0.625)
+        self.end_of_arm.wrist_roll.move_to(0.0)
+        self.end_of_arm.wrist_yaw.move_to(2.994)
+        self.end_of_arm.stretch_gripper.move_to(1.0)
+        self.lift.move_to(0.3)
+        self.push_command()
+        self.wait_command()
 
     def enable_collision_mgmt(self) -> None:
         """Compatibility no-op; the simulated robot has no collision management."""

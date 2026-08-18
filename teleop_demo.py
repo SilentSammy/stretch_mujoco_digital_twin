@@ -1,23 +1,15 @@
 import time
 
-try:
-    import stretch_body.robot as robot
-except ImportError:
-    import stretch_mujoco_api.robot as robot
+from stretch_tools import IS_STRETCH_ENV, NormVelController, TeleopProvider
 
-from stretch_tools.normalized_velocity_control import NormalizedVelocityControl
-from stretch_tools.teleop_provider import TeleopProvider
+if IS_STRETCH_ENV:
+    import stretch_body.robot as robot
+else:
+    import stretch_mujoco_api.robot as robot
 
 
 UPDATE_PERIOD = 0.1
 PRINT_PERIOD = 0.5
-
-
-def complete_command(command):
-    return {
-        name: command.get(name, 0.0)
-        for name in NormalizedVelocityControl.MAX_VELOCITIES
-    }
 
 
 def main():
@@ -26,9 +18,10 @@ def main():
         return
 
     stretch.enable_collision_mgmt()
-    control = NormalizedVelocityControl(stretch)
-    teleop = TeleopProvider()
-    stopped = complete_command({})
+    control = NormVelController(stretch)
+    teleop = TeleopProvider(robot=stretch)
+    algorithmic_command = {}
+    stopped = {name: 0.0 for name in NormVelController.MAX_VELOCITIES}
     last_print = 0.0
 
     print("Teleop active. Press Ctrl+C to stop.")
@@ -37,7 +30,7 @@ def main():
 
     try:
         while True:
-            command = complete_command(teleop.get_normalized_velocities())
+            command = teleop.get_manual_override(algorithmic_command)
             control.set_command(command)
 
             now = time.monotonic()
@@ -47,7 +40,10 @@ def main():
                     for name, value in command.items()
                     if abs(value) > 0.01
                 }
-                print(active or "idle")
+                output = [active or "idle"]
+                if not IS_STRETCH_ENV:
+                    output.append(stretch._sim.pull_status().sim_to_real_time_ratio_msg)
+                print(*output)
                 last_print = now
 
             time.sleep(UPDATE_PERIOD)
