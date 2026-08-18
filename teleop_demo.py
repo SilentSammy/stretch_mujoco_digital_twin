@@ -7,8 +7,6 @@ if IS_STRETCH_ENV:
 else:
     import stretch_mujoco_api.robot as robot
 
-
-UPDATE_PERIOD = 0.1
 PRINT_PERIOD = 0.5
 
 
@@ -18,20 +16,16 @@ def main():
         return
 
     stretch.enable_collision_mgmt()
-    control = NormVelController(stretch)
+    controller = NormVelController(stretch)
     teleop = TeleopProvider(robot=stretch)
-    algorithmic_command = {}
-    stopped = {name: 0.0 for name in NormVelController.MAX_VELOCITIES}
     last_print = 0.0
-
-    print("Teleop active. Press Ctrl+C to stop.")
-    print("W/S base, A/D turn, Z/X lift, V/C arm, M/N gripper")
-    print("U/O wrist roll, I/K wrist pitch, J/L wrist yaw, H toggles head")
 
     try:
         while True:
-            command = teleop.get_manual_override(algorithmic_command)
-            control.set_command(command)
+            command = {}
+            # Send velocity command with manual override
+            command = teleop.get_manual_override(command)
+            controller.set_command(command)
 
             now = time.monotonic()
             if now - last_print >= PRINT_PERIOD:
@@ -40,21 +34,24 @@ def main():
                     for name, value in command.items()
                     if abs(value) > 0.01
                 }
-                output = [active or "idle"]
-                if not IS_STRETCH_ENV:
-                    output.append(stretch._sim.pull_status().sim_to_real_time_ratio_msg)
-                print(*output)
+                status = stretch.get_status()
+                positions = {
+                    "lift": round(status["lift"]["pos"], 3),
+                    "arm": round(status["arm"]["pos"], 3),
+                    "head_pan": round(status["head"]["head_pan"]["pos"], 3),
+                    "head_tilt": round(status["head"]["head_tilt"]["pos"], 3),
+                    **{
+                        name: round(joint["pos"], 3)
+                        for name, joint in status["end_of_arm"].items()
+                    },
+                }
+                print(active or "idle", positions)
                 last_print = now
 
-            time.sleep(UPDATE_PERIOD)
     except KeyboardInterrupt:
         pass
     finally:
-        for _ in range(10):
-            control.set_command(stopped)
-            time.sleep(UPDATE_PERIOD)
         stretch.stop()
-
 
 if __name__ == "__main__":
     main()

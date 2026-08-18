@@ -20,6 +20,10 @@
     "toggle_buttons": {
       "head_wrist_toggle": [ "Y", "h" ],
       "manual_mode_toggle": [ "X", "y" ]
+    },
+    "hold_inputs": {
+      "fast_base": [ "f" ],
+      "precision": [ "p" ]
     }
   },
   "sim": {

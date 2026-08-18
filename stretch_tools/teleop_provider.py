@@ -58,6 +58,10 @@ class TeleopProvider:
                 'toggle_buttons': {
                     'head_wrist_toggle': ['X', 'h'],
                     'manual_mode_toggle': ['X', 'y']
+                },
+                'hold_inputs': {
+                    'fast_base': ['f'],
+                    'precision': ['p']
                 }
             },
             'sim': {
@@ -97,6 +101,7 @@ class TeleopProvider:
         
         # Load toggle buttons
         self.toggle_buttons = final_config.get('toggle_buttons', {'head_wrist_toggle': ['X', 'h']})
+        self.hold_inputs = final_config.get('hold_inputs', {})
         
         # Update modification time
         self.last_mtime = os.path.getmtime(self.config_file)
@@ -192,7 +197,7 @@ class TeleopProvider:
                 - stick.get(low_game, 0.0)
             ) * game_scale
             throttle = self._get_base_throttle() if throttle_base else 1.0
-            return max(-1.0, min(1.0, keyboard + joystick * throttle))
+            return max(-1.0, min(1.0, (keyboard + joystick) * throttle))
         return ci.get_bipolar_ctrl(*normalized)
 
     def _get_base_throttle(self):
@@ -202,12 +207,20 @@ class TeleopProvider:
         except (AttributeError, KeyError, TypeError):
             lift_is_low = False
 
-        boost = 1.0 + 2.0 * ci.get_axis('RT') if lift_is_low else 1.0
+        fast_keys = self.hold_inputs.get('fast_base', [])
+        trigger = max(0.0, min(1.0, ci.get_axis('RT')))
+        if any(ci.is_pressed(key) for key in fast_keys):
+            trigger = 1.0
+
+        boost = 1.0 + 2.0 * trigger if lift_is_low else 1.0
         return boost / 3.0
 
     def _get_precision_scale(self):
         """Scale all movement from full speed down to 10% using LT."""
         trigger = max(0.0, min(1.0, ci.get_axis('LT')))
+        precision_keys = self.hold_inputs.get('precision', [])
+        if any(ci.is_pressed(key) for key in precision_keys):
+            trigger = 1.0
         return 1.0 - 0.9 * trigger
 
     def _button_pressed(self, button):

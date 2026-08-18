@@ -19,7 +19,7 @@ class Joint:
         limits: tuple[float, float] | None = None,
         position_tolerance: float = 0.005,
         velocity_tolerance: float = 0.005,
-        correction_gain: float = 20.0,
+        correction_gain: float = 10.0,
         max_correction: float = 0.015,
     ) -> None:
         self._robot = robot
@@ -155,7 +155,7 @@ class PrismaticJoint(Joint):
         lower, upper = self.limits
         destination = upper if velocity_m > 0 else lower
         if velocity_m == 0:
-            destination = self.status["pos"]
+            destination = self._desired_position
         self._move(destination, velocity_m)
 
 
@@ -207,7 +207,7 @@ class RevoluteJoint(Joint):
         lower, upper = self.limits
         destination = upper if velocity_r > 0 else lower
         if velocity_r == 0:
-            destination = self.status["pos"]
+            destination = self._desired_position
         self._move(destination, velocity_r)
 
 
@@ -226,9 +226,9 @@ class GripperJoint(Joint):
             max_velocity=0.4,
             requires_push=False,
             limits=(-0.376, 0.56),
-            position_tolerance=0.005,
+            position_tolerance=0.03,
             velocity_tolerance=float("inf"),
-            correction_gain=1.0,
+            correction_gain=2.0,
             max_correction=0.01,
         )
 
@@ -278,7 +278,7 @@ class GripperJoint(Joint):
         lower, upper = self.limits
         destination = upper if velocity_r > 0 else lower
         if velocity_r == 0:
-            destination = self._actuator.get_position(self._robot._sim.pull_status())
+            destination = self._desired_position
         self._move(destination, velocity_r / self.MOTOR_RAD_PER_FINGER_RAD)
 
 
@@ -291,8 +291,8 @@ class Base:
     DEFAULT_LINEAR_VELOCITY = 0.1
     MAX_LINEAR_VELOCITY = 0.3
     MAX_ANGULAR_VELOCITY = 1.9
-    LINEAR_ACCELERATION = 0.13
-    ANGULAR_ACCELERATION = 0.83
+    LINEAR_ACCELERATION = 0.5
+    ANGULAR_ACCELERATION = 1.6
 
     def __init__(self, robot: "Robot") -> None:
         self._robot = robot
@@ -733,7 +733,7 @@ class Robot:
                 if not self._waiting_for:
                     self._command_complete.set()
 
-            time.sleep(0.02)
+            time.sleep(0.01)
 
     def wait_command(self) -> bool:
         while self._sim.is_running():
