@@ -17,6 +17,7 @@ class NormVelController:
         self.robot = robot
         self.safe_mode = safe_base_mode
         self.robot.enable_collision_mgmt()
+        self.zero_cmd = {name: 0.0 for name in self.MAX_VELOCITIES}
         setters = {
             "base_forward": robot.base.set_translate_velocity,
             "base_counterclockwise": robot.base.set_rotational_velocity,
