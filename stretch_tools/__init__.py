@@ -12,11 +12,15 @@ def __getattr__(name):
     if name == 'TeleopProvider':
         from .teleop_provider import TeleopProvider
         return TeleopProvider
+    if name == 'Cameras':
+        from .cameras import Cameras
+        return Cameras
     raise AttributeError(name)
 
 __all__ = [
     'NormVelController',
     'TeleopProvider',
+    'Cameras',
     'IS_STRETCH_ENV',
     'IS_LINUX_ENV',
 ]

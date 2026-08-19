@@ -104,7 +104,7 @@ def _remove_owner(camera, owner):
             _pending_removals.add(camera)
 
 
-def _read(camera):
+def _read(camera, return_data=False):
     retry_add = False
     while True:
         with _lock:
@@ -119,7 +119,8 @@ def _read(camera):
             retry_add = False
 
         try:
-            image = _sim.pull_camera_data().get_camera_data(
+            camera_data = _sim.pull_camera_data()
+            image = camera_data.get_camera_data(
                 camera,
                 auto_rotate=False,
                 auto_correct_rgb=True,
@@ -127,7 +128,7 @@ def _read(camera):
             )
             if camera.is_depth:
                 image = np.clip(image * 1000, 0, 65535).astype(np.uint16)
-            return image
+            return (image, camera_data) if return_data else image
         except ValueError:
             if not _sim.is_running():
                 raise ConnectionError("The simulator stopped while waiting for a camera")
@@ -163,22 +164,42 @@ def _camera_for(device, stream_type):
 
 
 class _Frame:
-    def __init__(self, camera):
+    def __init__(self, frames, camera):
+        self.frames = frames
         self.camera = camera
 
     def get_data(self):
-        return _read(self.camera)
+        if self.frames.data is not None:
+            try:
+                image = self.frames.data.get_camera_data(
+                    self.camera,
+                    auto_rotate=False,
+                    auto_correct_rgb=True,
+                    use_depth_color_map=False,
+                )
+                with _lock:
+                    _last_access[self.camera] = time.monotonic()
+                    _pending_removals.discard(self.camera)
+                if self.camera.is_depth:
+                    image = np.clip(image * 1000, 0, 65535).astype(np.uint16)
+                return image
+            except ValueError:
+                pass
+
+        image, self.frames.data = _read(self.camera, return_data=True)
+        return image
 
 
 class _Frames:
     def __init__(self, cameras):
         self.cameras = cameras
+        self.data = None
 
     def get_color_frame(self):
-        return _Frame(self.cameras[stream.color])
+        return _Frame(self, self.cameras[stream.color])
 
     def get_depth_frame(self):
-        return _Frame(self.cameras[stream.depth])
+        return _Frame(self, self.cameras[stream.depth])
 
 
 class pipeline:

@@ -1,14 +1,13 @@
 import cv2
-import numpy as np
 
-try:
-    import pyrealsense2 as rs
-    WideCamera = cv2.VideoCapture
-except ImportError:
-    import stretch_mujoco_api.cameras as rs
-    WideCamera = rs.VideoCapture
-
-from stretch_tools import NormVelController, TeleopProvider, input
+from stretch_tools import Cameras, NormVelController, TeleopProvider, input
+from stretch_tools.cameras import (
+    HEAD_COLOR,
+    HEAD_DEPTH,
+    WIDE_COLOR,
+    WRIST_COLOR,
+    WRIST_DEPTH,
+)
 
 try:
     import stretch_body.robot as robot
@@ -21,108 +20,54 @@ def main():
     if not stretch.startup():
         return
 
-    wrist = rs.pipeline()
-    wrist_config = rs.config()
-    wrist_device = next(
-        device
-        for device in rs.context().query_devices()
-        if "D405" in device.get_info(rs.camera_info.name)
-    )
-    wrist_config.enable_device(wrist_device.get_info(rs.camera_info.serial_number))
-    wrist_config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)
-    wrist_config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 15)
-    wrist.start(wrist_config)
-
-    head = rs.pipeline()
-    head_config = rs.config()
-    head_config.enable_stream(rs.stream.color, 424, 240, rs.format.bgr8, 15)
-    head_config.enable_stream(rs.stream.depth, 424, 240, rs.format.z16, 15)
-    head.start(head_config)
-
-    wide = WideCamera(6)
+    cameras = Cameras()
 
     stretch.enable_collision_mgmt()
     controller = NormVelController(stretch)
     teleop = TeleopProvider(robot=stretch)
     feeds = {
-        "1": "Head color",
-        "2": "Head depth",
-        "3": "Wrist color",
-        "4": "Wrist depth",
-        "5": "Wide color",
+        "1": ("Head color", HEAD_COLOR),
+        "2": ("Head depth", HEAD_DEPTH),
+        "3": ("Wrist color", WRIST_COLOR),
+        "4": ("Wrist depth", WRIST_DEPTH),
+        "5": ("Wide color", WIDE_COLOR),
     }
     enabled = {key: False for key in feeds}
+    open_windows = set()
 
     try:
         while True:
             command = teleop.get_manual_override({})
             controller.set_command(command)
 
-            for key, window in feeds.items():
+            for key, (window, _) in feeds.items():
                 if input.rising_edge(key):
                     enabled[key] = not enabled[key]
-                    if not enabled[key]:
+                    if not enabled[key] and window in open_windows:
                         cv2.destroyWindow(window)
+                        open_windows.remove(window)
 
-            if enabled["1"] or enabled["2"]:
-                head_frames = head.wait_for_frames()
-                if enabled["1"]:
-                    head_color = np.asanyarray(
-                        head_frames.get_color_frame().get_data()
-                    )
-                    cv2.imshow(
-                        "Head color",
-                        cv2.rotate(head_color, cv2.ROTATE_90_CLOCKWISE),
-                    )
-                if enabled["2"]:
-                    head_depth = np.asanyarray(
-                        head_frames.get_depth_frame().get_data()
-                    )
-                    cv2.imshow(
-                        "Head depth",
-                        cv2.rotate(
-                            cv2.applyColorMap(
-                                cv2.convertScaleAbs(head_depth, alpha=0.03),
-                                cv2.COLORMAP_JET,
-                            ),
-                            cv2.ROTATE_90_CLOCKWISE,
-                        ),
-                    )
-
-            if enabled["3"] or enabled["4"]:
-                wrist_frames = wrist.wait_for_frames()
-                if enabled["3"]:
-                    wrist_color = np.asanyarray(
-                        wrist_frames.get_color_frame().get_data()
-                    )
-                    cv2.imshow("Wrist color", wrist_color)
-                if enabled["4"]:
-                    wrist_depth = np.asanyarray(
-                        wrist_frames.get_depth_frame().get_data()
-                    )
-                    cv2.imshow(
-                        "Wrist depth",
-                        cv2.applyColorMap(
-                            cv2.convertScaleAbs(wrist_depth, alpha=0.03),
+            for key, (window, feed) in feeds.items():
+                if not enabled[key]:
+                    continue
+                success, frame = cameras.read(feed)
+                if success:
+                    if feed.endswith("depth"):
+                        frame = cv2.applyColorMap(
+                            cv2.convertScaleAbs(frame, alpha=0.03),
                             cv2.COLORMAP_JET,
-                        ),
-                    )
-
-            if enabled["5"]:
-                _, wide_color = wide.read()
-                cv2.imshow(
-                    "Wide color",
-                    cv2.rotate(wide_color, cv2.ROTATE_90_COUNTERCLOCKWISE),
-                )
+                        )
+                    scale = min(1, 480 / max(frame.shape[:2]))
+                    frame = cv2.resize(frame, None, fx=scale, fy=scale)
+                    cv2.imshow(window, frame)
+                    open_windows.add(window)
             if cv2.waitKey(1) & 0xFF in (27, ord("q")):
                 break
 
     except KeyboardInterrupt:
         pass
     finally:
-        head.stop()
-        wrist.stop()
-        wide.release()
+        cameras.close()
         cv2.destroyAllWindows()
         stretch.stop()
 
