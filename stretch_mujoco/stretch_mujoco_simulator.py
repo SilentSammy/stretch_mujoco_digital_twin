@@ -560,13 +560,13 @@ class StretchMujocoSimulator:
             camera: StretchCameras enum value for the camera to add
         """
         with self._command_lock:
-            self.data_proxies.set_command(
-                StatusCommand(camera_management=CommandCameraManagement(
-                    camera_name=camera.name,
-                    action="add",
-                    trigger=True
-                ))
+            command = self.data_proxies.get_command()
+            command.camera_management = CommandCameraManagement(
+                camera_name=camera.name,
+                action="add",
+                trigger=True,
             )
+            self.data_proxies.set_command(command)
         # Update local tracking
         if camera not in self._cameras_to_use:
             self._cameras_to_use.append(camera)
@@ -580,13 +580,13 @@ class StretchMujocoSimulator:
             camera: StretchCameras enum value for the camera to remove
         """
         with self._command_lock:
-            self.data_proxies.set_command(
-                StatusCommand(camera_management=CommandCameraManagement(
-                    camera_name=camera.name,
-                    action="remove",
-                    trigger=True
-                ))
+            command = self.data_proxies.get_command()
+            command.camera_management = CommandCameraManagement(
+                camera_name=camera.name,
+                action="remove",
+                trigger=True,
             )
+            self.data_proxies.set_command(command)
         # Update local tracking
         if camera in self._cameras_to_use:
             self._cameras_to_use.remove(camera)

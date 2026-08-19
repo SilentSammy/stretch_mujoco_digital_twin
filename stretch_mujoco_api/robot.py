@@ -640,6 +640,10 @@ class Robot:
         if not self._sim.is_running():
             return False
 
+        from . import cameras
+
+        cameras._set_simulator(self._sim)
+
         status = self._sim.pull_status()
         for joint in self._joints:
             joint._startup(status)
@@ -745,4 +749,8 @@ class Robot:
         self._stop_controller.set()
         if self._controller_thread is not None:
             self._controller_thread.join()
+
+        from . import cameras
+
+        cameras._clear_simulator(self._sim)
         self._sim.stop()

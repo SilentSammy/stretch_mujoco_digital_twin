@@ -33,17 +33,15 @@ class MujocoServerCameraManagerSync:
 
         self.camera_renderers: dict[StretchCameras, mujoco.Renderer] = {}
 
+        self.camera_lock = threading.Lock()
+        self._cameras_to_add: list[StretchCameras] = []
+        self._cameras_to_remove: list[StretchCameras] = []
+
         self._set_camera_properties_and_create_renderers_in_mujoco(cameras_to_use)
 
         self.camera_fps_counter = FpsCounter()
 
         self.time_start = time.perf_counter()
-
-        self.camera_lock = threading.Lock()
-        
-        # Queues for thread-safe camera management
-        self._cameras_to_add: list[StretchCameras] = []
-        self._cameras_to_remove: list[StretchCameras] = []
 
     def close(self):
         """
@@ -80,11 +78,7 @@ class MujocoServerCameraManagerSync:
 
         self.camera_fps_counter.tick()
 
-    def _pull_camera_data(self):
-        """
-        Render a scene at each camera using the simulator and populate the imagery dictionary with the raw image pixels and camera params.
-        """
-        # Process queued camera additions/removals during render cycle
+    def _process_camera_changes(self):
         with self.camera_lock:
             for camera in self._cameras_to_add:
                 if camera not in self.camera_renderers:
@@ -105,7 +99,13 @@ class MujocoServerCameraManagerSync:
                     except Exception as e:
                         print(f"[CameraManager] Failed to remove camera {camera.name}: {e}")
             self._cameras_to_remove.clear()
-        
+
+    def _pull_camera_data(self):
+        """
+        Render a scene at each camera using the simulator and populate the imagery dictionary with the raw image pixels and camera params.
+        """
+        self._process_camera_changes()
+
         new_imagery = StatusStretchCameras.default()
         new_imagery.time = self.mujoco_server.mjdata.time
         new_imagery.fps = self.camera_fps_counter.fps
@@ -173,20 +173,20 @@ class MujocoServerCameraManagerSync:
         Queue a camera for removal. Actual removal happens during next render cycle.
         """
         with self.camera_lock:
+            if camera in self._cameras_to_add:
+                self._cameras_to_add.remove(camera)
             if camera in self.camera_renderers and camera not in self._cameras_to_remove:
                 self._cameras_to_remove.append(camera)
-            elif camera not in self.camera_renderers:
-                print(f"[CameraManager] Camera {camera} was not in camera_renderers")
 
     def _add_camera_renderer(self, camera: StretchCameras):
         """
         Queue a camera for addition. Actual creation happens during next render cycle.
         """
         with self.camera_lock:
+            if camera in self._cameras_to_remove:
+                self._cameras_to_remove.remove(camera)
             if camera not in self.camera_renderers and camera not in self._cameras_to_add:
                 self._cameras_to_add.append(camera)
-            elif camera in self.camera_renderers:
-                print(f"[CameraManager] Camera {camera} is already in camera_renderers")
 
     def get_camera_params(self, camera: StretchCameras) -> np.ndarray:
         """
@@ -336,6 +336,8 @@ class MujocoServerCameraManagerThreaded(MujocoServerCameraManagerSync):
         """
         Uses a ThreadPoolExecutor to render a scene at each camera using the simulator and populate the imagery dictionary with the raw image pixels and camera params.
         """
+        self._process_camera_changes()
+
         new_imagery = StatusStretchCameras.default()
         new_imagery.time = self.mujoco_server.mjdata.time
         new_imagery.fps = self.camera_fps_counter.fps

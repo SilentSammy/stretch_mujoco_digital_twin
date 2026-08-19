@@ -708,18 +708,10 @@ class MujocoServer:
             camera = StretchCameras[cmd.camera_name]
             
             if cmd.action == "add":
-                if camera not in self.camera_manager.camera_renderers:
-                    self.camera_manager._add_camera_renderer(camera)
-                    print(f"[MujocoServer] Added camera: {camera.name}")
-                else:
-                    print(f"[MujocoServer] Camera {camera.name} already active")
+                self.camera_manager._add_camera_renderer(camera)
                     
             elif cmd.action == "remove":
-                if camera in self.camera_manager.camera_renderers:
-                    self.camera_manager._remove_camera_renderer(camera)
-                    print(f"[MujocoServer] Removed camera: {camera.name}")
-                else:
-                    print(f"[MujocoServer] Camera {camera.name} not found")
+                self.camera_manager._remove_camera_renderer(camera)
                     
         except KeyError:
             print(f"[MujocoServer] Invalid camera name: {cmd.camera_name}")
