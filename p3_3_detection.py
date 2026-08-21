@@ -4,22 +4,18 @@ import time
 import cv2
 import numpy as np
 
-from stretch_tools import Cameras, NormVelController, StateController, TeleopProvider
-from stretch_tools.cameras import HEAD_COLOR
+from stretch_tools import (
+    Cameras,
+    HEAD_CAMERA,
+    NormVelController,
+    StateController,
+    TeleopProvider,
+)
 
 try:
     import stretch_body.robot as robot
 except ImportError:
     import stretch_mujoco_api.robot as robot
-
-
-# LOWER_BLUE = np.array([110, 100, 100])
-# UPPER_BLUE = np.array([130, 255, 255])
-LOWER_RED_1 = np.array([0, 100, 100])
-UPPER_RED_1 = np.array([10, 255, 255])
-LOWER_RED_2 = np.array([170, 100, 100])
-UPPER_RED_2 = np.array([179, 255, 255])
-MIN_AREA = 100
 
 
 def main():
@@ -36,23 +32,33 @@ def main():
         },
     )
     teleop = TeleopProvider(robot=stretch)
-    cameras = Cameras()
+    cameras = Cameras(head_info=HEAD_CAMERA)
+    lower_1 = np.array([0, 100, 100])
+    upper_1 = np.array([10, 255, 255])
+    lower_2 = np.array([170, 100, 100])
+    upper_2 = np.array([179, 255, 255])
 
     try:
         while True:
             command = scanning_position.get_command()
-            command["base_counterclockwise"] = -0.5
-            success, frame = cameras.read(HEAD_COLOR)
+            command["base_counterclockwise"] = -0.3
+            success, frame, depth_frame = cameras.read_head()
             if success:
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                mask = cv2.inRange(hsv, LOWER_RED_1, UPPER_RED_1)
-                mask |= cv2.inRange(hsv, LOWER_RED_2, UPPER_RED_2)
+                mask = cv2.inRange(hsv, lower_1, upper_1)
+                mask |= cv2.inRange(hsv, lower_2, upper_2)
                 contours, _ = cv2.findContours(
                     mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
                 )
-                if contours and cv2.contourArea(max(contours, key=cv2.contourArea)) > MIN_AREA:
-                    command = {"base_counterclockwise": 0.0}
+                if contours:
+                    contour = max(contours, key=cv2.contourArea)
+                    moments = cv2.moments(contour)
+                    if cv2.contourArea(contour) > 100 and moments["m00"]:
+                        x = int(moments["m10"] / moments["m00"])
+                        y = int(moments["m01"] / moments["m00"])
+                        print(x, y)
                 cv2.imshow("Head RGB", frame)
+                cv2.imshow("Head Depth", depth_frame)
                 cv2.imshow("Red Mask", mask)
 
             command = teleop.get_manual_override(command)

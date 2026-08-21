@@ -20,7 +20,7 @@ class TeleopProvider:
         is_linux=None,
         config_file='teleop_mappings.json',
         robot=None,
-        sparse=True,
+        sparse=False,
     ):
         self.is_linux = platform.system() == "Linux" if is_linux is None else is_linux
         self.robot = robot

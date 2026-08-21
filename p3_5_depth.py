@@ -11,6 +11,7 @@ from stretch_tools import (
     StateController,
     TeleopProvider,
 )
+
 try:
     import stretch_body.robot as robot
 except ImportError:
@@ -75,6 +76,10 @@ def main():
                 center = detect_object(frame)
                 if center:
                     x, y = center
+                    distance = HEAD_CAMERA.get_depth(center, depth_frame)
+                    if distance is not None:
+                        print(f"Distance: {distance:.3f} m")
+
                     height, width = frame.shape[:2]
                     command = head_forward.get_command()
                     command["base_counterclockwise"] = (

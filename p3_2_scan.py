@@ -3,8 +3,13 @@ import time
 
 import cv2
 
-from stretch_tools import Cameras, NormVelController, StateController, TeleopProvider
-from stretch_tools.cameras import HEAD_COLOR
+from stretch_tools import (
+    Cameras,
+    HEAD_CAMERA,
+    NormVelController,
+    StateController,
+    TeleopProvider,
+)
 
 try:
     import stretch_body.robot as robot
@@ -26,18 +31,19 @@ def main():
         },
     )
     teleop = TeleopProvider(robot=stretch)
-    cameras = Cameras()
+    cameras = Cameras(head_info=HEAD_CAMERA)
 
     try:
         while True:
             command = scanning_position.get_command()
-            command["base_counterclockwise"] = -0.5
+            command["base_counterclockwise"] = -0.3
             command = teleop.get_manual_override(command)
             controller.set_command(command)
 
-            success, frame = cameras.read(HEAD_COLOR)
+            success, frame, depth_frame = cameras.read_head()
             if success:
                 cv2.imshow("Head RGB", frame)
+                cv2.imshow("Head Depth", depth_frame)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
