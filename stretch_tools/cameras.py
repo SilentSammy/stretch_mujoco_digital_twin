@@ -6,9 +6,13 @@ import numpy as np
 try:
     import pyrealsense2 as rs
     WideCamera = cv2.VideoCapture
+    _SIMULATED = False
 except ImportError:
     import stretch_mujoco_api.cameras as rs
     WideCamera = rs.VideoCapture
+    _SIMULATED = True
+
+from .camera_info import HEAD_CAMERA, NAVIGATION_CAMERA, WRIST_CAMERA
 
 
 HEAD_COLOR = "head_color"
@@ -19,7 +23,16 @@ WIDE_COLOR = "wide_color"
 
 
 class Cameras:
-    def __init__(self):
+    """Environment-independent camera access with uint16 millimetre depth."""
+
+    def __init__(self, head_info=None, wrist_info=None, navigation_info=None):
+        self._source_info = {
+            "head": head_info or HEAD_CAMERA,
+            "wrist": wrist_info or WRIST_CAMERA,
+        }
+        self.head_info = self._source_info["head"].with_depth_scale(1e-3)
+        self.wrist_info = self._source_info["wrist"].with_depth_scale(1e-3)
+        self.navigation_info = navigation_info or NAVIGATION_CAMERA
         self._pipelines = {}
         self._wide = None
         self._cache = {}
@@ -88,9 +101,21 @@ class Cameras:
             return False, None
 
         cache["used"].add(stream)
+        if stream == "depth":
+            scale = self._source_info[name].depth_scale * 1000
+            image = np.clip(np.rint(image * scale), 0, 65535).astype(np.uint16)
         if name == "head":
             image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
         return True, image
+
+    def get_info(self, feed):
+        if feed in (HEAD_COLOR, HEAD_DEPTH):
+            return self.head_info
+        if feed in (WRIST_COLOR, WRIST_DEPTH):
+            return self.wrist_info
+        if feed == WIDE_COLOR:
+            return self.navigation_info
+        raise ValueError(f"Unknown camera feed: {feed}")
 
     def read_head(self):
         color_ok, color = self.read(HEAD_COLOR)

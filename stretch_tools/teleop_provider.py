@@ -15,9 +15,17 @@ class TeleopProvider:
     BASE_JOINTS = {'base_forward', 'base_counterclockwise'}
     STICK_DEADZONE = math.radians(15.0)
 
-    def __init__(self, is_linux=None, config_file='teleop_mappings.json', robot=None):
+    def __init__(
+        self,
+        is_linux=None,
+        config_file='teleop_mappings.json',
+        robot=None,
+        sparse=True,
+    ):
         self.is_linux = platform.system() == "Linux" if is_linux is None else is_linux
         self.robot = robot
+        self.sparse = sparse
+        self._active_joints = set()
         
         # Store config file in this script's directory
         script_dir = Path(__file__).parent
@@ -253,9 +261,12 @@ class TeleopProvider:
 
     def get_normalized_velocities(self):
         """Get normalized joint velocities from input devices.
+
+        In sparse mode, inactive joints are omitted, except for a single zero
+        command emitted when an active joint is released.
         
         Returns:
-            dict: Normalized velocities (-1.0 to 1.0) for all joints
+            dict: Normalized velocities from -1.0 to 1.0.
         """
         # Check for config file updates
         self._check_and_reload_config()
@@ -269,14 +280,29 @@ class TeleopProvider:
             **self._get_stick('LX', 'LY'),
             **self._get_stick('RX', 'RY'),
         }
+        if self.sparse:
+            for joint in self._active_joints - self.joint_mappings.keys():
+                result[joint] = 0.0
+            self._active_joints.intersection_update(self.joint_mappings)
+        else:
+            self._active_joints.clear()
+
         for joint, mapping in self.joint_mappings.items():
             normalized = self._normalize_mapping(mapping)
             stick = sticks if normalized[2] in sticks or normalized[3] in sticks else None
-            result[joint] = precision_scale * self._get_joint_velocity(
+            velocity = precision_scale * self._get_joint_velocity(
                 mapping,
                 stick=stick,
                 throttle_base=joint in self.BASE_JOINTS,
             )
+            if not self.sparse:
+                result[joint] = velocity
+            elif velocity != 0.0:
+                result[joint] = velocity
+                self._active_joints.add(joint)
+            elif joint in self._active_joints:
+                result[joint] = 0.0
+                self._active_joints.remove(joint)
         return result
 
     def get_manual_override(self, cmd_autonomous):
