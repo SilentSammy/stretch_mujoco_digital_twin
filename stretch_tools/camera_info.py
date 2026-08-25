@@ -11,11 +11,15 @@ class CamInfo:
         camera_matrix=None,
         distortion_coeffs=None,
         distortion_model=None,
+        image_to_optical_T=None,
     ):
         self.name = name
         self.camera_matrix = camera_matrix
         self.distortion_coeffs = distortion_coeffs
         self.distortion_model = distortion_model
+        self.image_to_optical_T = (
+            np.eye(4) if image_to_optical_T is None else image_to_optical_T
+        )
 
     @property
     def has_intrinsics(self):
@@ -63,12 +67,14 @@ class DepthCamInfo(CamInfo):
         depth_camera_matrix=None,
         depth_distortion_coeffs=None,
         depth_distortion_model=None,
+        image_to_optical_T=None,
     ):
         super().__init__(
             name,
             camera_matrix,
             distortion_coeffs,
             distortion_model,
+            image_to_optical_T,
         )
         self.depth_scale = depth_scale
         self.depth_camera_matrix = (
@@ -87,6 +93,7 @@ class DepthCamInfo(CamInfo):
             self.depth_camera_matrix,
             self.depth_distortion_coeffs,
             self.depth_distortion_model,
+            self.image_to_optical_T,
         )
 
     def get_depth(self, pixel, depth_image, sample_radius=3):
@@ -104,6 +111,14 @@ class DepthCamInfo(CamInfo):
 
 _IS_STRETCH_ENV = importlib.util.find_spec("stretch_body") is not None
 _SIM_SUFFIX = "" if _IS_STRETCH_ENV else " (Sim)"
+_HEAD_IMAGE_TO_OPTICAL_T = np.array(
+    [
+        [0.0, 1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+)
 
 HEAD_RGB_CAMERA = CamInfo(
     name=f"D435i Head RGB{_SIM_SUFFIX}",
@@ -116,6 +131,7 @@ HEAD_RGB_CAMERA = CamInfo(
     ),
     distortion_coeffs=np.zeros(5),
     distortion_model="inverse_brown_conrady",
+    image_to_optical_T=_HEAD_IMAGE_TO_OPTICAL_T,
 )
 
 HEAD_DEPTH_CAMERA = CamInfo(
@@ -129,6 +145,7 @@ HEAD_DEPTH_CAMERA = CamInfo(
     ),
     distortion_coeffs=np.zeros(5),
     distortion_model="brown_conrady",
+    image_to_optical_T=_HEAD_IMAGE_TO_OPTICAL_T,
 )
 
 WRIST_RGB_CAMERA = CamInfo(
@@ -174,6 +191,7 @@ HEAD_CAMERA = DepthCamInfo(
     depth_camera_matrix=HEAD_DEPTH_CAMERA.camera_matrix,
     depth_distortion_coeffs=HEAD_DEPTH_CAMERA.distortion_coeffs,
     depth_distortion_model=HEAD_DEPTH_CAMERA.distortion_model,
+    image_to_optical_T=HEAD_RGB_CAMERA.image_to_optical_T,
 )
 
 WRIST_CAMERA = DepthCamInfo(

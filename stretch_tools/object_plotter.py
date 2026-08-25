@@ -19,8 +19,14 @@ class ObjectPlotter:
         self.base_scatter = self.ax.scatter([0], [0], [0], c='green', marker='o', s=100, label='Base Origin')
         self.cam_scatter = self.ax.scatter([0], [0], [0], c='blue', marker='s', s=100, label='Camera')
         
-        # Create line artist for base to camera
-        self.base_to_cam_line, = self.ax.plot([0, 0], [0, 0], [0, 0], 'b--', alpha=0.5)
+        # Create an axis-aligned path from base to camera: Z, then Y, then X.
+        self.base_to_cam_line, = self.ax.plot(
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            'b--',
+            alpha=0.5,
+        )
         
         # Camera direction arrow (quiver)
         self.cam_arrow = self.ax.quiver(0, 0, 0, 0, 0, 1, 
@@ -79,9 +85,14 @@ class ObjectPlotter:
         # Update camera scatter
         self.cam_scatter._offsets3d = ([cam_x], [cam_y], [cam_z])
         
-        # Update base to camera line
-        self.base_to_cam_line.set_data([0, cam_x], [0, cam_y])
-        self.base_to_cam_line.set_3d_properties([0, cam_z])
+        # Update the base-to-camera path along Z, then Y, then X.
+        self.base_to_cam_line.set_data(
+            [0, 0, 0, cam_x],
+            [0, 0, cam_y, cam_y],
+        )
+        self.base_to_cam_line.set_3d_properties(
+            [0, cam_z, cam_z, cam_z]
+        )
         
         # Update camera direction arrow
         # Remove old quiver and create new one (quiver doesn't have update method)

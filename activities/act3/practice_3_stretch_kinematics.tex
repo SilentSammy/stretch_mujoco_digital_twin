@@ -100,12 +100,20 @@ Inside the loop, read and display both head feeds:
 \begin{lstlisting}[language=Python]
 success, frame, depth_frame = cameras.read_head()
 if success:
+    depth_display = cv2.normalize(
+        depth_frame, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U
+    )
     cv2.imshow("Head RGB", frame)
-    cv2.imshow("Head Depth", depth_frame)
+    cv2.imshow("Head Depth", depth_display)
 
 if cv2.waitKey(1) & 0xFF == ord("q"):
     break
 \end{lstlisting}
+
+The raw depth image contains values much larger than the usual 8-bit display
+range. \texttt{cv2.normalize()} maps the current frame to values from 0 to 255,
+making its structure easier to see. Keep \texttt{depth\_frame} unchanged for
+distance calculations; use \texttt{depth\_display} only for visualization.
 
 Finally, close the cameras and windows in the \texttt{finally} block:
 
@@ -298,9 +306,12 @@ Use the head depth image to measure the distance to the detected object.
 
 \subsection*{Background}
 
-The depth image stores a distance measurement at each pixel. A value of zero
-usually means that no valid measurement was available. The public
-\texttt{Cameras} interface represents depth in millimetres, while
+The raw depth image stores a distance measurement at each pixel. A value of
+zero usually means that no valid measurement was available. The normalized
+image displayed on screen is useful for visualization, but its brightness does
+not represent a fixed metric scale because each frame is normalized
+independently. The public \texttt{Cameras} interface represents raw depth in
+millimetres, while
 \texttt{HEAD\_CAMERA.get\_depth()} converts the measurement to metres and
 accounts for the different RGB and depth camera intrinsics.
 

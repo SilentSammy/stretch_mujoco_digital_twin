@@ -76,6 +76,9 @@ def main():
             command["base_forward"] = 0.0
             success, frame, depth_frame = cameras.read_head()
             if success:
+                depth_display = cv2.normalize(
+                    depth_frame, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U
+                )
                 center = detect_object(frame)
                 if center:
                     x, y = center
@@ -91,14 +94,12 @@ def main():
                     command["base_forward"] = 0.0
                     if distance is not None:
                         distance_error = distance - TARGET_DISTANCE
-                        command["base_forward"] = alignment * np.clip(
-                            KP_DISTANCE * distance_error, -1.0, 1.0
-                        )
+                        command["base_forward"] = alignment * np.clip( KP_DISTANCE * distance_error, -1.0, 1.0 )
                         print(f"Distance: {distance:.3f} m")
 
                     cv2.circle(frame, center, 5, (0, 0, 255), -1)
                 cv2.imshow("Head RGB", frame)
-                cv2.imshow("Head Depth", depth_frame)
+                cv2.imshow("Head Depth", depth_display)
 
             command = teleop.get_manual_override(command)
             controller.set_command(command)

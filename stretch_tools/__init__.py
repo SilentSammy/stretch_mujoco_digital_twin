@@ -27,6 +27,12 @@ def __getattr__(name):
     if name == 'Cameras':
         from .cameras import Cameras
         return Cameras
+    if name == 'RobotTransforms':
+        from .robot_transforms import RobotTransforms
+        return RobotTransforms
+    if name == 'ObjectPlotter':
+        from .object_plotter import ObjectPlotter
+        return ObjectPlotter
     raise AttributeError(name)
 
 __all__ = [
@@ -43,6 +49,8 @@ __all__ = [
     'WRIST_RGB_CAMERA',
     'NAVIGATION_CAMERA',
     'StateController',
+    'RobotTransforms',
+    'ObjectPlotter',
     'IS_STRETCH_ENV',
     'IS_LINUX_ENV',
 ]
