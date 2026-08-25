@@ -1,5 +1,5 @@
 class StateController:
-    """Generate normalized velocity commands for desired joint positions."""
+    """Generate normalized velocities for joint targets; gripper uses percent."""
 
     KP = {
         "wrist_roll_counterclockwise": 1.0,
@@ -9,7 +9,7 @@ class StateController:
         "arm_out": 5.0,
         "head_pan_counterclockwise": 1.0,
         "head_tilt_up": 1.0,
-        "gripper_open": 5.0,
+        "gripper_open": 0.04,
     }
     MAX_VELOCITY = {"lift_up": 0.75}
     TOLERANCE = {
@@ -20,7 +20,7 @@ class StateController:
         "arm_out": 0.05,
         "head_pan_counterclockwise": 0.05,
         "head_tilt_up": 0.05,
-        "gripper_open": 0.15,
+        "gripper_open": 2.0,
     }
 
     def __init__(self, robot, desired_state):
@@ -40,7 +40,7 @@ class StateController:
             "wrist_roll_counterclockwise": status["end_of_arm"]["wrist_roll"]["pos"],
             "wrist_pitch_up": status["end_of_arm"]["wrist_pitch"]["pos"],
             "wrist_yaw_counterclockwise": status["end_of_arm"]["wrist_yaw"]["pos"],
-            "gripper_open": status["end_of_arm"]["stretch_gripper"]["pos"],
+            "gripper_open": status["end_of_arm"]["stretch_gripper"]["pos_pct"],
         }
         return {name: state[name] for name in self.desired_state}
 

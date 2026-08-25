@@ -92,6 +92,13 @@ class Joint:
         self._pending_motion = None
         return True
 
+    def _is_complete(self, destination: float, actual_position: float, status) -> bool:
+        return (
+            self._desired_position == destination
+            and abs(destination - actual_position) <= self.position_tolerance
+            and abs(self._actuator.get_velocity(status)) <= self.velocity_tolerance
+        )
+
     def _update(self, status, elapsed: float) -> bool:
         if self._motion is None:
             return True
@@ -115,11 +122,7 @@ class Joint:
         actuator_target = min(max(self._desired_position + correction, lower), upper)
         self._robot._sim.move_to(self._actuator, actuator_target)
 
-        return (
-            self._desired_position == destination
-            and abs(destination - actual_position) <= self.position_tolerance
-            and abs(self._actuator.get_velocity(status)) <= self.velocity_tolerance
-        )
+        return self._is_complete(destination, actual_position, status)
 
 
 class PrismaticJoint(Joint):
@@ -217,6 +220,9 @@ class GripperJoint(Joint):
     APERTURE_M_PER_FINGER_RAD = 0.342
     SIM_TO_FINGER_VELOCITY = 15.6
     MOTION_THRESHOLD = 0.01
+
+    def _is_complete(self, destination: float, actual_position: float, status) -> bool:
+        return self._desired_position == destination
 
     def __init__(self, robot: "Robot") -> None:
         super().__init__(
