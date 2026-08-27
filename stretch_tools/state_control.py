@@ -1,5 +1,11 @@
+import time
+
+
 class StateController:
     """Generate normalized velocities for joint targets; gripper uses percent."""
+
+    GRIPPER_VELOCITY_TOLERANCE = 0.05
+    GRIPPER_SETTLE_TIME = 0.5
 
     KP = {
         "wrist_roll_counterclockwise": 1.0,
@@ -29,9 +35,19 @@ class StateController:
         self.kp = self.KP.copy()
         self.max_velocity = self.MAX_VELOCITY.copy()
         self.tolerance = self.TOLERANCE.copy()
+        self._gripper_target = desired_state.get("gripper_open")
+        self._gripper_commanded = False
+        self._gripper_settled_since = None
 
-    def get_current_state(self):
-        status = self.robot.get_status()
+    def _sync_gripper_target(self):
+        target = self.desired_state.get("gripper_open")
+        if target != self._gripper_target:
+            self._gripper_target = target
+            self._gripper_commanded = False
+            self._gripper_settled_since = None
+
+    def get_current_state(self, status=None):
+        status = self.robot.get_status() if status is None else status
         state = {
             "lift_up": status["lift"]["pos"],
             "arm_out": status["arm"]["pos"],
@@ -45,11 +61,37 @@ class StateController:
         return {name: state[name] for name in self.desired_state}
 
     def is_at_goal(self):
-        current = self.get_current_state()
-        return all(
-            abs(current[name] - target) <= self.tolerance.get(name, 0.01)
-            for name, target in self.desired_state.items()
-        )
+        self._sync_gripper_target()
+        status = self.robot.get_status()
+        current = self.get_current_state(status)
+
+        for name, target in self.desired_state.items():
+            position_reached = (
+                abs(current[name] - target) <= self.tolerance.get(name, 0.01)
+            )
+            if name != "gripper_open":
+                if not position_reached:
+                    return False
+                continue
+            if not self._gripper_commanded:
+                if position_reached:
+                    continue
+                return False
+
+            velocity = status["end_of_arm"]["stretch_gripper"]["vel"]
+            if abs(velocity) > self.GRIPPER_VELOCITY_TOLERANCE:
+                self._gripper_settled_since = None
+                return False
+            if self._gripper_settled_since is None:
+                self._gripper_settled_since = time.monotonic()
+                return False
+            if (
+                time.monotonic() - self._gripper_settled_since
+                < self.GRIPPER_SETTLE_TIME
+            ):
+                return False
+
+        return True
 
     def get_progress(self, previous_state):
         current = self.get_current_state()
@@ -61,6 +103,7 @@ class StateController:
         return progress
 
     def get_command(self):
+        self._sync_gripper_target()
         current = self.get_current_state()
         command = {}
         for name, target in self.desired_state.items():
@@ -68,6 +111,9 @@ class StateController:
             if abs(error) <= self.tolerance.get(name, 0.01):
                 command[name] = 0.0
                 continue
+
+            if name == "gripper_open":
+                self._gripper_commanded = True
 
             maximum = self.max_velocity.get(name, 1.0)
             command[name] = max(-maximum, min(maximum, self.kp.get(name, 1.0) * error))

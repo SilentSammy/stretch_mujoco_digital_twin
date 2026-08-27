@@ -6,11 +6,9 @@ import numpy as np
 try:
     import pyrealsense2 as rs
     WideCamera = cv2.VideoCapture
-    _SIMULATED = False
 except ImportError:
     import stretch_mujoco_api.cameras as rs
     WideCamera = rs.VideoCapture
-    _SIMULATED = True
 
 from .camera_info import HEAD_CAMERA, NAVIGATION_CAMERA, WRIST_CAMERA
 

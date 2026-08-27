@@ -47,6 +47,12 @@ _watchdog_stop = threading.Event()
 _watchdog_thread = None
 
 
+def _prepare_image(camera, image):
+    if not camera.is_depth:
+        return image
+    return np.clip(image * 1000, 0, 65535).astype(np.uint16)
+
+
 def _set_simulator(simulator):
     global _sim, _watchdog_thread
     _sim = simulator
@@ -126,8 +132,7 @@ def _read(camera, return_data=False):
                 auto_correct_rgb=True,
                 use_depth_color_map=False,
             )
-            if camera.is_depth:
-                image = np.clip(image * 1000, 0, 65535).astype(np.uint16)
+            image = _prepare_image(camera, image)
             return (image, camera_data) if return_data else image
         except ValueError:
             if not _sim.is_running():
@@ -169,9 +174,10 @@ class _Frame:
         self.camera = camera
 
     def get_data(self):
-        if self.frames.data is not None:
+        camera_data = self.frames.data.get(self.camera)
+        if camera_data is not None:
             try:
-                image = self.frames.data.get_camera_data(
+                image = camera_data.get_camera_data(
                     self.camera,
                     auto_rotate=False,
                     auto_correct_rgb=True,
@@ -180,20 +186,20 @@ class _Frame:
                 with _lock:
                     _last_access[self.camera] = time.monotonic()
                     _pending_removals.discard(self.camera)
-                if self.camera.is_depth:
-                    image = np.clip(image * 1000, 0, 65535).astype(np.uint16)
+                image = _prepare_image(self.camera, image)
                 return image
             except ValueError:
                 pass
 
-        image, self.frames.data = _read(self.camera, return_data=True)
+        image, camera_data = _read(self.camera, return_data=True)
+        self.frames.data[self.camera] = camera_data
         return image
 
 
 class _Frames:
     def __init__(self, cameras):
         self.cameras = cameras
-        self.data = None
+        self.data = {}
 
     def get_color_frame(self):
         return _Frame(self, self.cameras[stream.color])

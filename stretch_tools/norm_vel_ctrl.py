@@ -1,3 +1,7 @@
+def _clip_normalized(value):
+    return max(-1.0, min(value, 1.0))
+
+
 class NormVelController:
     SAFE_BASE_LIMIT = 0.33
     MAX_VELOCITIES = {
@@ -48,6 +52,10 @@ class NormVelController:
         }
 
     def set_command(self, command: dict[str, float]) -> None:
+        command = {
+            name: _clip_normalized(normalized)
+            for name, normalized in command.items()
+        }
         base_names = {"base_forward", "base_counterclockwise"}
         combined_base = base_names <= command.keys()
         if combined_base:
@@ -94,8 +102,8 @@ def merge_proportional(cmd_primary, cmd_secondary, deadband=0.05):
     all_joints = set(cmd_primary.keys()) | set(cmd_secondary.keys())
     
     for joint in all_joints:
-        primary_input = cmd_primary.get(joint, 0.0)
-        secondary_input = cmd_secondary.get(joint, 0.0)
+        primary_input = _clip_normalized(cmd_primary.get(joint, 0.0))
+        secondary_input = _clip_normalized(cmd_secondary.get(joint, 0.0))
         
         if abs(primary_input) < deadband:
             # No primary input - use secondary
@@ -106,6 +114,9 @@ def merge_proportional(cmd_primary, cmd_secondary, deadband=0.05):
             # sign(primary_input) determines direction
             override_strength = abs(primary_input)
             desired_value = 1.0 if primary_input > 0 else -1.0
-            cmd_final[joint] = (1 - override_strength) * secondary_input + override_strength * desired_value
+            cmd_final[joint] = _clip_normalized(
+                (1 - override_strength) * secondary_input
+                + override_strength * desired_value
+            )
     
     return cmd_final
