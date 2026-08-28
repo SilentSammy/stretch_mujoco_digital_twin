@@ -1,12 +1,13 @@
 import cv2
 
-from stretch_tools import Cameras, NormVelController, TeleopProvider, input
-from stretch_tools.cameras import (
-    HEAD_COLOR,
-    HEAD_DEPTH,
-    WIDE_COLOR,
-    WRIST_COLOR,
-    WRIST_DEPTH,
+from stretch_tools import (
+    HEAD_CAMERA,
+    NAVIGATION_CAMERA,
+    WRIST_CAMERA,
+    NormVelController,
+    TeleopProvider,
+    close_cameras,
+    input,
 )
 
 try:
@@ -20,17 +21,15 @@ def main():
     if not stretch.startup():
         return
 
-    cameras = Cameras()
-
     stretch.enable_collision_mgmt()
     controller = NormVelController(stretch)
     teleop = TeleopProvider(robot=stretch)
     feeds = {
-        "1": ("Head color", HEAD_COLOR),
-        "2": ("Head depth", HEAD_DEPTH),
-        "3": ("Wrist color", WRIST_COLOR),
-        "4": ("Wrist depth", WRIST_DEPTH),
-        "5": ("Wide color", WIDE_COLOR),
+        "1": ("Head color", HEAD_CAMERA.get_frame, False),
+        "2": ("Head depth", HEAD_CAMERA.get_depth_frame, True),
+        "3": ("Wrist color", WRIST_CAMERA.get_frame, False),
+        "4": ("Wrist depth", WRIST_CAMERA.get_depth_frame, True),
+        "5": ("Wide color", NAVIGATION_CAMERA.get_frame, False),
     }
     enabled = {key: False for key in feeds}
     open_windows = set()
@@ -40,19 +39,19 @@ def main():
             command = teleop.get_manual_override({})
             controller.set_command(command)
 
-            for key, (window, _) in feeds.items():
+            for key, (window, _, _) in feeds.items():
                 if input.rising_edge(key):
                     enabled[key] = not enabled[key]
                     if not enabled[key] and window in open_windows:
                         cv2.destroyWindow(window)
                         open_windows.remove(window)
 
-            for key, (window, feed) in feeds.items():
+            for key, (window, get_frame, is_depth) in feeds.items():
                 if not enabled[key]:
                     continue
-                success, frame = cameras.read(feed)
+                success, frame = get_frame()
                 if success:
-                    if feed.endswith("depth"):
+                    if is_depth:
                         frame = cv2.applyColorMap(
                             cv2.convertScaleAbs(frame, alpha=0.03),
                             cv2.COLORMAP_JET,
@@ -67,7 +66,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        cameras.close()
+        close_cameras()
         cv2.destroyAllWindows()
         stretch.stop()
 

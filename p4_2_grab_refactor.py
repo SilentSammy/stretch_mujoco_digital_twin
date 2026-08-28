@@ -4,15 +4,7 @@ import time
 import cv2
 import numpy as np
 
-from stretch_tools import (
-    Cameras,
-    HEAD_CAMERA,
-    NormVelController,
-    RobotTransforms,
-    StateController,
-    TeleopProvider,
-    WRIST_CAMERA,
-)
+from stretch_tools import HEAD_CAMERA, WRIST_CAMERA, NormVelController, RobotTransforms, StateController, TeleopProvider, close_cameras
 
 try:
     import stretch_body.robot as robot
@@ -27,6 +19,8 @@ KP_ROTATION = 1.0
 KP_DISTANCE = 5.0
 TARGET_DISTANCE = 0.6
 TARGET_WRIST_DISTANCE = 0.15
+NAVIGATION_MAX_DISTANCE = 3.0
+GRAB_MAX_DISTANCE = 0.7
 WRIST_CENTER_TOLERANCE = 0.75
 ARM_DISTANCE_TOLERANCE = 0.025
 GRAB_POSITION_SETTLE_TIME = 0.5
@@ -39,25 +33,31 @@ WRIST_Y_OFFSET = 75
 SCAN_SPEED = -0.2
 
 
-def detect_object(frame):
+def detect_object(frame, depth_frame=None, max_distance=None, camera_info=None):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, np.array([0, 100, 100]), np.array([10, 255, 255]))
     mask |= cv2.inRange(hsv, np.array([170, 100, 100]), np.array([179, 255, 255]))
     contours, _ = cv2.findContours(
         mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
-    if not contours:
-        return None
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True):
+        if cv2.contourArea(contour) <= 100:
+            break
+        moments = cv2.moments(contour)
+        if not moments["m00"]:
+            continue
 
-    contour = max(contours, key=cv2.contourArea)
-    moments = cv2.moments(contour)
-    if cv2.contourArea(contour) <= 100 or not moments["m00"]:
-        return None
+        center = (
+            int(moments["m10"] / moments["m00"]),
+            int(moments["m01"] / moments["m00"]),
+        )
+        if depth_frame is not None and max_distance is not None:
+            distance = camera_info.get_depth(center, depth_frame)
+            if distance is None or distance > max_distance:
+                continue
+        return center
 
-    return (
-        int(moments["m10"] / moments["m00"]),
-        int(moments["m01"] / moments["m00"]),
-    )
+    return None
 
 
 def locate_object(center, depth_frame, camera_info, camera_T):
@@ -76,10 +76,12 @@ def main():
     stretch.startup()
     stretch.enable_collision_mgmt()
 
+    # Initialize controllers and providers
     controller = NormVelController(stretch, safe_base_mode=True)
     teleop = TeleopProvider(robot=stretch)
-    cameras = Cameras(head_info=HEAD_CAMERA, wrist_info=WRIST_CAMERA)
     transforms = RobotTransforms(stretch)
+
+    # State controllers for various robot configurations
     arm_stow = StateController(
         stretch,
         {
@@ -109,42 +111,53 @@ def main():
     gripper_open_controller = StateController( stretch, {"gripper_open": 130.0} )
     gripper_close_controller = StateController( stretch, {"gripper_open": -25.0} )
 
+    # Sensor data and velocity commands
+    command = None
+    head_rgb, head_depth = None, None
+    wrist_rgb, wrist_depth = None, None
+    head_center = None
+    object_T = None
+    wrist_center = None
+
+    # Boolean flags and state
     within_distance = False
     gripper_ready = False
     gripper_closing = False
     grab_position_started = None
     grabbed = False
+    stowed = False
     phase = "navigate"
-    print(f"Phase: {phase}")
 
     try:
         while True:
-            command = { "base_forward": 0.0, "base_counterclockwise": 0.0 }
+            command = {}
 
             if phase == "navigate":
                 command.update(arm_stow.get_command())
-                success, frame, depth_frame = cameras.read_head()
+                success, head_rgb, head_depth = HEAD_CAMERA.get_frames()
                 if success:
-                    center = detect_object(frame)
+                    head_center = detect_object(
+                        head_rgb, head_depth, NAVIGATION_MAX_DISTANCE, HEAD_CAMERA
+                    )
                     stowed = arm_stow.is_at_goal()
 
-                    if center is None:
+                    if head_center is None:
                         if stowed:
                             command.update(scanning_position.get_command())
                             command["base_counterclockwise"] = SCAN_SPEED
                     else:
-                        x, y = center
-                        height, width = frame.shape[:2]
+                        x, y = head_center
+                        height, width = head_rgb.shape[:2]
                         horizontal_error = (x - width / 2) / (width / 2)
                         vertical_error = (y - height / 2) / (height / 2)
                         command["head_pan_counterclockwise"] = -KP_HEAD * horizontal_error
                         command["head_tilt_up"] = -KP_HEAD * vertical_error
 
                         object_T = locate_object(
-                            center,
-                            depth_frame,
-                            cameras.head_info,
-                            transforms.get_cam_T(cameras.head_info),
+                            head_center,
+                            head_depth,
+                            HEAD_CAMERA,
+                            transforms.get_cam_T(HEAD_CAMERA),
                         )
                         if object_T is not None and stowed:
                             object_x, object_y, object_z = object_T[:3, 3]
@@ -180,9 +193,9 @@ def main():
                                     KP_DISTANCE * (distance - TARGET_DISTANCE)
                                 )
 
-                        cv2.circle(frame, center, 5, (0, 255, 0), -1)
+                        cv2.circle(head_rgb, head_center, 5, (0, 255, 0), -1)
 
-                    cv2.imshow("Head RGB", frame)
+                    cv2.imshow("Head RGB", head_rgb)
 
             else:
                 ready_to_close = False
@@ -192,37 +205,24 @@ def main():
                 if gripper_open_at_goal:
                     gripper_ready = True
 
-                success, frame, depth_frame = cameras.read_wrist()
+                success, wrist_rgb, wrist_depth = WRIST_CAMERA.get_frames()
                 if success:
-                    depth_display = cv2.normalize(
-                        depth_frame,
-                        None,
-                        0,
-                        255,
-                        cv2.NORM_MINMAX,
-                        cv2.CV_8U,
+                    depth_display = cv2.normalize(wrist_depth, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+                    wrist_center = detect_object(
+                        wrist_rgb, wrist_depth, GRAB_MAX_DISTANCE, WRIST_CAMERA
                     )
-                    center = detect_object(frame)
-                    if center and not grabbed:
-                        x, y = center
-                        height, width = frame.shape[:2]
-                        horizontal_error = (
-                            x - width / 2 - WRIST_X_OFFSET
-                        ) / (width / 2)
-                        vertical_error = (
-                            y - height / 2 - WRIST_Y_OFFSET
-                        ) / (height / 2)
-                        command["wrist_yaw_counterclockwise"] = (
-                            -KP_WRIST * horizontal_error
-                        )
-                        command["wrist_pitch_up"] = (
-                            -KP_WRIST * vertical_error
-                        )
+                    if wrist_center and not grabbed:
+                        x, y = wrist_center
+                        height, width = wrist_rgb.shape[:2]
+                        horizontal_error = ( x - width / 2 - WRIST_X_OFFSET ) / (width / 2)
+                        vertical_error = ( y - height / 2 - WRIST_Y_OFFSET ) / (height / 2)
+                        command["wrist_yaw_counterclockwise"] = -KP_WRIST * horizontal_error
+                        command["wrist_pitch_up"] = -KP_WRIST * vertical_error
 
                         if gripper_ready:
-                            distance = cameras.wrist_info.get_depth(
-                                center,
-                                depth_frame,
+                            distance = WRIST_CAMERA.get_depth(
+                                wrist_center,
+                                wrist_depth,
                                 sample_radius=15,
                             )
                             if distance is not None:
@@ -237,9 +237,9 @@ def main():
                                 ):
                                     ready_to_close = True
 
-                        cv2.circle(frame, center, 5, (0, 255, 0), -1)
+                        cv2.circle(wrist_rgb, wrist_center, 5, (0, 255, 0), -1)
 
-                    cv2.imshow("Wrist RGB", frame)
+                    cv2.imshow("Wrist RGB", wrist_rgb)
                     cv2.imshow("Wrist Depth", depth_display)
 
                 if not gripper_closing:
@@ -278,24 +278,10 @@ def main():
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
-            time.sleep(1 / 30)
     except KeyboardInterrupt:
         pass
     finally:
-        controller.set_command(
-            {
-                "base_forward": 0.0,
-                "base_counterclockwise": 0.0,
-                "head_pan_counterclockwise": 0.0,
-                "head_tilt_up": 0.0,
-                "arm_out": 0.0,
-                "wrist_pitch_up": 0.0,
-                "wrist_roll_counterclockwise": 0.0,
-                "wrist_yaw_counterclockwise": 0.0,
-                "gripper_open": 0.0,
-            }
-        )
-        cameras.close()
+        close_cameras()
         cv2.destroyAllWindows()
         stretch.stop()
 

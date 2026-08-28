@@ -16,12 +16,12 @@ class NormVelController:
         "head_tilt_up": 2.0,
         "gripper_open": 4.5,
     }
+    ZERO_CMD = {name: 0.0 for name in MAX_VELOCITIES}
 
     def __init__(self, robot, safe_base_mode: bool = False) -> None:
         self.robot = robot
         self.safe_mode = safe_base_mode
         self.robot.enable_collision_mgmt()
-        self.zero_cmd = {name: 0.0 for name in self.MAX_VELOCITIES}
         setters = {
             "base_forward": robot.base.set_translate_velocity,
             "base_counterclockwise": robot.base.set_rotational_velocity,

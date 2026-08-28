@@ -11,6 +11,7 @@ from .camera_info import (
     WRIST_CAMERA,
     WRIST_DEPTH_CAMERA,
     WRIST_RGB_CAMERA,
+    close_cameras,
 )
 from .norm_vel_ctrl import NormVelController
 from .state_control import StateController
@@ -25,7 +26,7 @@ def __getattr__(name):
         from .teleop_provider import TeleopProvider
         return TeleopProvider
     if name == 'Cameras':
-        from .cameras import Cameras
+        from .camera_info import Cameras
         return Cameras
     if name == 'RobotTransforms':
         from .robot_transforms import RobotTransforms
@@ -48,6 +49,7 @@ __all__ = [
     'WRIST_DEPTH_CAMERA',
     'WRIST_RGB_CAMERA',
     'NAVIGATION_CAMERA',
+    'close_cameras',
     'StateController',
     'RobotTransforms',
     'ObjectPlotter',
