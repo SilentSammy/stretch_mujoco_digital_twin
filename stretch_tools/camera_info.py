@@ -147,7 +147,16 @@ class DepthCamInfo(CamInfo):
             max(0, y - sample_radius) : min(height, y + sample_radius + 1),
             max(0, x - sample_radius) : min(width, x + sample_radius + 1),
         ]
-        samples = region[region > 0]
+        samples = region[np.isfinite(region) & (region > 0)]
+        if samples.size == 0:
+            valid_y, valid_x = np.nonzero(
+                np.isfinite(depth_image) & (depth_image > 0)
+            )
+            if valid_y.size == 0:
+                return None
+            distances = np.maximum(abs(valid_x - x), abs(valid_y - y))
+            nearest = distances == distances.min()
+            samples = depth_image[valid_y[nearest], valid_x[nearest]]
         return None if samples.size == 0 else float(np.median(samples) * self.depth_scale)
 
 
@@ -253,7 +262,7 @@ WRIST_CAMERA = DepthCamInfo(
     depth_distortion_model=WRIST_DEPTH_CAMERA.distortion_model,
     color_feed=WRIST_COLOR,
     depth_feed=WRIST_DEPTH,
-    native_depth_scale=1e-4 if _IS_STRETCH_ENV else 1e-3,
+    native_depth_scale=1e-3,
 )
 
 NAVIGATION_CAMERA = CamInfo(f"OV9782 Navigation{_SIM_SUFFIX}", feed=WIDE_COLOR)

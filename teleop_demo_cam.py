@@ -53,7 +53,9 @@ def main():
                 if success:
                     if is_depth:
                         frame = cv2.applyColorMap(
-                            cv2.convertScaleAbs(frame, alpha=0.03),
+                            cv2.normalize(
+                                frame, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U
+                            ),
                             cv2.COLORMAP_JET,
                         )
                     scale = min(1, 480 / max(frame.shape[:2]))
