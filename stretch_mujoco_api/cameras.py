@@ -26,6 +26,30 @@ class camera_info:
     serial_number = "serial_number"
 
 
+class option:
+    holes_fill = "holes_fill"
+
+
+class _Filter:
+    def set_option(self, _option, _value):
+        pass
+
+    def process(self, frame):
+        return frame
+
+
+class spatial_filter(_Filter):
+    pass
+
+
+class temporal_filter(_Filter):
+    pass
+
+
+class hole_filling_filter(_Filter):
+    pass
+
+
 class _Device:
     def __init__(self, name):
         self.name = name

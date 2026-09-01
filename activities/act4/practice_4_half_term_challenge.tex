@@ -442,7 +442,6 @@ Add the wrist and gripper constants:
 KP_WRIST = 0.5
 KP_ARM = 5.0
 TARGET_WRIST_DISTANCE = 0.15
-GRAB_MAX_DISTANCE = 0.7
 WRIST_CENTER_TOLERANCE = 0.75
 ARM_DISTANCE_TOLERANCE = 0.025
 GRAB_POSITION_SETTLE_TIME = 0.5
@@ -545,9 +544,7 @@ command.update(gripper_open_controller.get_command())
 
 success, wrist_rgb, wrist_depth = WRIST_CAMERA.get_frames()
 if success:
-    wrist_center = detect_object(
-        wrist_rgb, wrist_depth, GRAB_MAX_DISTANCE, WRIST_CAMERA
-    )
+    wrist_center = detect_object(wrist_rgb)
     cv2.imshow("Wrist RGB", wrist_rgb)
     depth_display = cv2.normalize(
         wrist_depth, None, 0, 255,

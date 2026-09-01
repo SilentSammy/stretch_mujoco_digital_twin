@@ -20,7 +20,6 @@ KP_DISTANCE = 5.0
 TARGET_DISTANCE = 0.6
 TARGET_WRIST_DISTANCE = 0.15
 NAVIGATION_MAX_DISTANCE = 3.0
-GRAB_MAX_DISTANCE = 0.7
 WRIST_CENTER_TOLERANCE = 0.75
 ARM_DISTANCE_TOLERANCE = 0.025
 GRAB_POSITION_SETTLE_TIME = 0.5
@@ -285,7 +284,7 @@ def main():
                             wrist_depth,
                             sample_radius=15,
                         )
-                    wrist_center = detect_object(wrist_rgb, wrist_depth, GRAB_MAX_DISTANCE, WRIST_CAMERA)
+                    wrist_center = raw_wrist_center
                     if wrist_center and not grabbed:
                         horizontal_error, vertical_error = center_object_with_wrist()
                         reach_for_object(horizontal_error, vertical_error)
@@ -298,25 +297,11 @@ def main():
 
                 now = time.monotonic()
                 if now >= next_diagnostic:
-                    arm_status = stretch.get_status()["arm"]
                     print(
-                        {
-                            "camera_success": success,
-                            "depth_scale": WRIST_CAMERA.depth_scale,
-                            "native_depth_scale": WRIST_CAMERA.native_depth_scale,
-                            "depth_min": int(wrist_depth.min()) if success else None,
-                            "depth_max": int(wrist_depth.max()) if success else None,
-                            "raw_center": raw_wrist_center,
-                            "filtered_center": wrist_center,
-                            "raw_distance": raw_wrist_distance,
-                            "distance": wrist_distance,
-                            "gripper_ready": gripper_ready,
-                            "center_error": wrist_center_error,
-                            "authority": wrist_authority,
-                            "arm_command": command["arm_out"],
-                            "arm_pos": arm_status["pos"],
-                            "arm_vel": arm_status["vel"],
-                        }
+                        f"depth: ok={success}, "
+                        f"range={int(wrist_depth.min()) if success else None}-"
+                        f"{int(wrist_depth.max()) if success else None}, "
+                        f"sample={raw_wrist_distance}, distance={wrist_distance}"
                     )
                     next_diagnostic = now + 0.5
 

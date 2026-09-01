@@ -262,7 +262,7 @@ WRIST_CAMERA = DepthCamInfo(
     depth_distortion_model=WRIST_DEPTH_CAMERA.distortion_model,
     color_feed=WRIST_COLOR,
     depth_feed=WRIST_DEPTH,
-    native_depth_scale=1e-3,
+    native_depth_scale=1e-4 if _IS_STRETCH_ENV else 1e-3,
 )
 
 NAVIGATION_CAMERA = CamInfo(f"OV9782 Navigation{_SIM_SUFFIX}", feed=WIDE_COLOR)
@@ -280,8 +280,18 @@ class Cameras:
         self.wrist_info = self._source_info["wrist"].with_depth_scale(1e-3)
         self.navigation_info = navigation_info or NAVIGATION_CAMERA
         self._pipelines = {}
+        self._depth_filters = {}
         self._wide = None
         self._cache = {}
+
+    def _get_depth_filters(self, name):
+        if name not in self._depth_filters:
+            spatial = rs.spatial_filter()
+            temporal = rs.temporal_filter()
+            hole_filling = rs.hole_filling_filter()
+            hole_filling.set_option(rs.option.holes_fill, 1)
+            self._depth_filters[name] = (spatial, temporal, hole_filling)
+        return self._depth_filters[name]
 
     def _start(self, name):
         if name in self._pipelines:
@@ -341,6 +351,9 @@ class Cameras:
                 if stream == "color"
                 else cache["frames"].get_depth_frame()
             )
+            if stream == "depth":
+                for depth_filter in self._get_depth_filters(name):
+                    frame = depth_filter.process(frame)
             image = np.asanyarray(frame.get_data())
         except Exception:
             cache["frames"] = None
@@ -379,6 +392,7 @@ class Cameras:
         if self._wide is not None:
             self._wide.release()
         self._pipelines.clear()
+        self._depth_filters.clear()
         self._cache.clear()
         self._wide = None
 

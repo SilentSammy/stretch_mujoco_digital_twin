@@ -28,7 +28,6 @@ KP_DISTANCE = 5.0
 TARGET_DISTANCE = 0.6
 TARGET_WRIST_DISTANCE = 0.15
 NAVIGATION_MAX_DISTANCE = 3.0
-GRAB_MAX_DISTANCE = 0.7
 WRIST_CENTER_TOLERANCE = 0.75
 ARM_DISTANCE_TOLERANCE = 0.025
 GRAB_POSITION_SETTLE_TIME = 0.5
@@ -259,9 +258,7 @@ def run(stage):
 
                 success, wrist_rgb, wrist_depth = WRIST_CAMERA.get_frames()
                 if success:
-                    wrist_center = detect_object(
-                        wrist_rgb, wrist_depth, GRAB_MAX_DISTANCE, WRIST_CAMERA
-                    )
+                    wrist_center = detect_object(wrist_rgb)
                     if wrist_center and not grabbed and stage >= CENTER:
                         errors = center_object_with_wrist()
                         if stage >= REACH:
