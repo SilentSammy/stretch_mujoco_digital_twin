@@ -44,7 +44,7 @@ class RPLidar:
                 continue
 
             scan = [
-                (15, float((angle + 180) % 360), float(distance * 1000))
+                (15, float((180 - angle) % 360), float(distance * 1000))
                 for angle, distance in enumerate(np.asarray(distances))
                 if np.isfinite(distance) and distance > 0
             ]

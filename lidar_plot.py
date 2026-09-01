@@ -1,5 +1,4 @@
-from stretch_tools import NormVelController, TeleopProvider
-from stretch_tools.lidar_plotter import LidarPlotter
+from stretch_tools import LidarPlotter, NormVelController, TeleopProvider
 
 try:
     from rplidar import RPLidar

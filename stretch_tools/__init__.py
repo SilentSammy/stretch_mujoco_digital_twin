@@ -14,6 +14,7 @@ from .camera_info import (
     close_cameras,
 )
 from .norm_vel_ctrl import NormVelController
+from .lidar import LidarPlotter, filter_mast_points
 from .state_control import StateController
 
 
@@ -38,6 +39,8 @@ def __getattr__(name):
 
 __all__ = [
     'NormVelController',
+    'filter_mast_points',
+    'LidarPlotter',
     'TeleopProvider',
     'Cameras',
     'CamInfo',
