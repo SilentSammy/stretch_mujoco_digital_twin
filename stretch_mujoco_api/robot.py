@@ -646,9 +646,10 @@ class Robot:
         if not self._sim.is_running():
             return False
 
-        from . import cameras
+        from . import cameras, rplidar
 
         cameras._set_simulator(self._sim)
+        rplidar._set_simulator(self._sim)
 
         status = self._sim.pull_status()
         for joint in self._joints:
@@ -756,7 +757,8 @@ class Robot:
         if self._controller_thread is not None:
             self._controller_thread.join()
 
-        from . import cameras
+        from . import cameras, rplidar
 
         cameras._clear_simulator(self._sim)
+        rplidar._clear_simulator(self._sim)
         self._sim.stop()
