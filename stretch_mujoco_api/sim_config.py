@@ -29,7 +29,8 @@ class MeshObject:
     scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
     collision_size: tuple[float, float, float] | None = None
     collision_position: tuple[float, float, float] | None = None
-    mass: float = 0.1
+    mass: float | None = None
+    density: float = 1000.0
     gravity: bool = True
 
     @classmethod

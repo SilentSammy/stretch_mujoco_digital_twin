@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import mujoco
+import numpy as np
 
 from stretch_mujoco import utils
 
@@ -24,8 +25,12 @@ class World:
         for obj in self.config.objects:
             if not obj.name:
                 raise ValueError("Object names cannot be empty")
-            if obj.mass <= 0:
+            if obj.mass is not None and obj.mass <= 0:
                 raise ValueError(f"Object mass must be positive: {obj.name}")
+            if obj.density <= 0:
+                raise ValueError(f"Object density must be positive: {obj.name}")
+            if any(scale <= 0 for scale in obj.scale):
+                raise ValueError(f"Object scale must be positive: {obj.name}")
             if obj.collision_size and any(size <= 0 for size in obj.collision_size):
                 raise ValueError(f"Collision size must be positive: {obj.name}")
 
@@ -108,6 +113,7 @@ class World:
 
         material_name = None
         spec.add_mesh(name=mesh_name, file=str(mesh_path), scale=obj.scale)
+        collision_size, collision_position, mass = self._get_physics(obj, mesh_path)
 
         if obj.texture is not None:
             texture_path = self._resolve(obj.texture)
@@ -138,23 +144,54 @@ class World:
         if material_name:
             visual["material"] = material_name
 
-        if obj.collision_size is None:
-            visual["mass"] = obj.mass
-        else:
-            visual.update(contype=0, conaffinity=0, density=0)
-            collision_position = obj.collision_position or (
-                0.0,
-                0.0,
-                obj.collision_size[2],
-            )
-            body.add_geom(
-                name=f"{obj.name}_collision",
-                type=mujoco.mjtGeom.mjGEOM_BOX,
-                pos=collision_position,
-                size=obj.collision_size,
-                mass=obj.mass,
-                rgba=(1.0, 0.0, 0.0, 0.0),
-                friction=(1.0, 0.005, 0.0001),
-            )
+        visual.update(contype=0, conaffinity=0, density=0)
+        body.add_geom(
+            name=f"{obj.name}_collision",
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            pos=collision_position,
+            size=collision_size,
+            mass=mass,
+            rgba=(1.0, 0.0, 0.0, 0.0),
+            friction=(1.0, 0.005, 0.0001),
+        )
 
         body.add_geom(**visual)
+
+    def _get_physics(self, obj: MeshObject, mesh_path: Path):
+        if obj.collision_size is None:
+            collision_size, inferred_position = self._get_mesh_bounds(
+                mesh_path,
+                obj.scale,
+            )
+        else:
+            collision_size = obj.collision_size
+            inferred_position = (0.0, 0.0, collision_size[2])
+
+        collision_position = obj.collision_position or inferred_position
+        volume = 8 * np.prod(collision_size)
+        mass = obj.mass if obj.mass is not None else max(obj.density * volume, 0.01)
+        return collision_size, collision_position, mass
+
+    @staticmethod
+    def _get_mesh_bounds(mesh_path: Path, scale):
+        if mesh_path.suffix.lower() != ".obj":
+            raise ValueError(
+                f"Automatic collision geometry requires an OBJ mesh: {mesh_path}"
+            )
+
+        vertices = []
+        with mesh_path.open(encoding="utf-8", errors="ignore") as mesh_file:
+            for line in mesh_file:
+                if line.startswith("v "):
+                    vertices.append([float(value) for value in line.split()[1:4]])
+
+        if not vertices:
+            raise ValueError(f"Object mesh contains no vertices: {mesh_path}")
+
+        vertices = np.asarray(vertices) * np.asarray(scale)
+        minimum = vertices.min(axis=0)
+        maximum = vertices.max(axis=0)
+        size = (maximum - minimum) / 2
+        if np.any(size <= 0):
+            raise ValueError(f"Object mesh has zero-volume bounds: {mesh_path}")
+        return tuple(size), tuple((minimum + maximum) / 2)
