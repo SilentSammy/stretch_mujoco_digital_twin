@@ -7,6 +7,9 @@ import time
 from stretch_mujoco.enums.actuators import Actuators
 from stretch_mujoco.stretch_mujoco_simulator import StretchMujocoSimulator
 
+from .sim_config import SimConfig, load_sim_config
+from .world import World
+
 
 class Joint:
     def __init__(
@@ -612,8 +615,10 @@ class EndOfArm:
 
 
 class Robot:
-    def __init__(self) -> None:
-        self._sim = StretchMujocoSimulator()
+    def __init__(self, config: SimConfig | None = None) -> None:
+        self.config = config or load_sim_config()
+        self.world = World(self.config)
+        self._sim = StretchMujocoSimulator(**self.world.simulator_kwargs())
         self._waiting_for: set[Joint | Base] = set()
         self._motion_lock = threading.Lock()
         self._command_complete = threading.Event()
@@ -642,7 +647,11 @@ class Robot:
         )
 
     def startup(self) -> bool:
-        self._sim.start(headless=False)
+        self._sim.start(
+            show_viewer_ui=self.config.show_viewer_ui,
+            headless=self.config.headless,
+            use_passive_viewer=self.config.use_passive_viewer,
+        )
         if not self._sim.is_running():
             return False
 
