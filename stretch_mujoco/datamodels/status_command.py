@@ -58,7 +58,7 @@ class CommandObjectMoveBy:
     """Move a freejoint body by a relative offset from its current position."""
     body_name: str
     delta: tuple[float, float, float, float, float, float]  # (dx, dy, dz, droll, dpitch, dyaw)
-    z_min: float
+    z_min: float | None
     trigger: bool
 
 
@@ -82,9 +82,9 @@ class StatusCommand:
     keyframe: CommandKeyframe = field(default_factory=lambda:CommandKeyframe("", False))
     coordinate_frame_arrows_viz: list[CommandCoordinateFrameArrowsViz] = field(default_factory=list)
     camera_management: CommandCameraManagement | None = None
-    object_pose: CommandObjectPose | None = None
-    object_move_by: CommandObjectMoveBy | None = None
-    object_gravity: CommandObjectGravity | None = None
+    object_poses: list[CommandObjectPose] = field(default_factory=list)
+    object_moves: list[CommandObjectMoveBy] = field(default_factory=list)
+    object_gravity: list[CommandObjectGravity] = field(default_factory=list)
 
 
 
@@ -129,12 +129,21 @@ class StatusCommand:
         command.move_by = {
             key: dataclass_from_dict(CommandMove, val) for key, val in command.move_by.items()  # type: ignore
         }
-        if command.object_pose is not None and isinstance(command.object_pose, dict):
-            command.object_pose = dataclass_from_dict(CommandObjectPose, command.object_pose)
-        if command.object_move_by is not None and isinstance(command.object_move_by, dict):
-            command.object_move_by = dataclass_from_dict(CommandObjectMoveBy, command.object_move_by)
-        if command.object_gravity is not None and isinstance(command.object_gravity, dict):
-            command.object_gravity = dataclass_from_dict(CommandObjectGravity, command.object_gravity)
+        command.object_poses = [
+            dataclass_from_dict(CommandObjectPose, value)
+            if isinstance(value, dict) else value
+            for value in command.object_poses
+        ]
+        command.object_moves = [
+            dataclass_from_dict(CommandObjectMoveBy, value)
+            if isinstance(value, dict) else value
+            for value in command.object_moves
+        ]
+        command.object_gravity = [
+            dataclass_from_dict(CommandObjectGravity, value)
+            if isinstance(value, dict) else value
+            for value in command.object_gravity
+        ]
         return command
 
     @staticmethod

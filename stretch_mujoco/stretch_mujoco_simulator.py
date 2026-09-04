@@ -168,6 +168,7 @@ class StretchMujocoSimulator:
                 thread != threading.current_thread()
                 and thread != threading.main_thread()
                 and not isinstance(thread, threading._DummyThread)
+                and not thread.daemon
             ):
                 click.secho(
                     f"Stopping thread {index}/{len(active_threads)-1}.",
@@ -247,12 +248,12 @@ class StretchMujocoSimulator:
         from stretch_mujoco.datamodels.status_command import CommandObjectPose
         with self._command_lock:
             command = self.data_proxies.get_command()
-            command.object_pose = CommandObjectPose(
+            command.object_poses.append(CommandObjectPose(
                 body_name=body_name,
                 position=tuple(position),
                 quat=tuple(quat),
                 trigger=True,
-            )
+            ))
             self.data_proxies.set_command(command)
 
     @require_connection
@@ -260,7 +261,7 @@ class StretchMujocoSimulator:
         self,
         body_name: str,
         delta: dict,
-        z_min: float = 0.45,
+        z_min: float | None = None,
     ) -> None:
         """Move a freejoint object by a relative offset from its current pose.
 
@@ -277,12 +278,12 @@ class StretchMujocoSimulator:
         from stretch_mujoco.datamodels.status_command import CommandObjectMoveBy
         with self._command_lock:
             command = self.data_proxies.get_command()
-            command.object_move_by = CommandObjectMoveBy(
+            command.object_moves.append(CommandObjectMoveBy(
                 body_name=body_name,
                 delta=d,
                 z_min=z_min,
                 trigger=True,
-            )
+            ))
             self.data_proxies.set_command(command)
 
     @require_connection
@@ -297,11 +298,11 @@ class StretchMujocoSimulator:
         from stretch_mujoco.datamodels.status_command import CommandObjectGravity
         with self._command_lock:
             command = self.data_proxies.get_command()
-            command.object_gravity = CommandObjectGravity(
+            command.object_gravity.append(CommandObjectGravity(
                 body_name=body_name,
                 enabled=enabled,
                 trigger=True,
-            )
+            ))
             self.data_proxies.set_command(command)
 
     @require_connection

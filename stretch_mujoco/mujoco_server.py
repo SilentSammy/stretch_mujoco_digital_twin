@@ -237,7 +237,7 @@ class MujocoServer:
         self,
         body_name: str,
         delta: tuple[float, float, float, float, float, float],
-        z_min: float = 0.45,
+        z_min: float | None = None,
     ):
         """Move a freejoint body by a relative offset (position + euler rotation) from its current pose."""
         body_id = mujoco.mj_name2id(self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_name)
@@ -263,7 +263,8 @@ class MujocoServer:
         # Apply position delta
         current_pos = self.mjdata.qpos[qadr:qadr + 3].copy()
         new_pos = current_pos + np.array([dx, dy, dz], dtype=float)
-        new_pos[2] = max(new_pos[2], z_min)
+        if z_min is not None:
+            new_pos[2] = max(new_pos[2], z_min)
         self.mjdata.qpos[qadr:qadr + 3] = new_pos
 
         # Apply rotation delta (object-local frame)
@@ -670,31 +671,31 @@ class MujocoServer:
             command_status.camera_management.trigger = False
             self._handle_camera_management(command_status.camera_management)
 
-        # object pose (teleport)
-        if command_status.object_pose is not None and command_status.object_pose.trigger:
-            command_status.object_pose.trigger = False
+        # object poses (teleport)
+        for object_pose in command_status.object_poses:
             self.set_free_body_pose(
-                body_name=command_status.object_pose.body_name,
-                position=command_status.object_pose.position,
-                quat=command_status.object_pose.quat,
+                body_name=object_pose.body_name,
+                position=object_pose.position,
+                quat=object_pose.quat,
             )
+        command_status.object_poses.clear()
 
-        # object relative movement
-        if command_status.object_move_by is not None and command_status.object_move_by.trigger:
-            command_status.object_move_by.trigger = False
+        # object relative movements
+        for object_move in command_status.object_moves:
             self.move_free_body_by(
-                body_name=command_status.object_move_by.body_name,
-                delta=command_status.object_move_by.delta,
-                z_min=command_status.object_move_by.z_min,
+                body_name=object_move.body_name,
+                delta=object_move.delta,
+                z_min=object_move.z_min,
             )
+        command_status.object_moves.clear()
 
-        # object gravity toggle
-        if command_status.object_gravity is not None and command_status.object_gravity.trigger:
-            command_status.object_gravity.trigger = False
+        # object gravity toggles
+        for object_gravity in command_status.object_gravity:
             self.set_body_gravity(
-                body_name=command_status.object_gravity.body_name,
-                enabled=command_status.object_gravity.enabled,
+                body_name=object_gravity.body_name,
+                enabled=object_gravity.enabled,
             )
+        command_status.object_gravity.clear()
 
         self.base_controller.update()
 

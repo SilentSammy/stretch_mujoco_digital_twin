@@ -53,6 +53,40 @@ class MeshObject:
 
 
 @dataclass
+class ObjectControlsConfig:
+    enabled: bool = True
+    toggle_key: str = "t"
+    next_object_key: str = "m"
+    previous_object_key: str = "n"
+    gravity_off_key: str = "g"
+    gravity_on_key: str = "f"
+    gamepad_toggle: str = "START"
+    gamepad_next_object: str = "RB"
+    gamepad_previous_object: str = "LB"
+    gamepad_gravity_off: str = "Y"
+    gamepad_gravity_on: str = "B"
+    gamepad_rotation_modifier: str = "LT"
+    gamepad_deadzone: float = 0.15
+    update_rate: float = 20.0
+    translation_speed: float = 0.25
+    rotation_speed: float = 1.0
+    keys: dict[str, str] = field(default_factory=lambda: {
+        "x+": "d",
+        "x-": "a",
+        "y+": "w",
+        "y-": "s",
+        "z+": "z",
+        "z-": "x",
+        "roll+": "u",
+        "roll-": "o",
+        "pitch+": "i",
+        "pitch-": "k",
+        "yaw+": "j",
+        "yaw-": "l",
+    })
+
+
+@dataclass
 class SimConfig:
     scene: str | Path | None = None
     robocasa: RoboCasaConfig = field(default_factory=RoboCasaConfig)
@@ -63,6 +97,7 @@ class SimConfig:
     use_passive_viewer: bool = True
     camera_rate: float = 30.0
     timestep: float | None = None
+    object_controls: ObjectControlsConfig = field(default_factory=ObjectControlsConfig)
     _config_dir: Path = field(default_factory=Path.cwd, repr=False)
 
 

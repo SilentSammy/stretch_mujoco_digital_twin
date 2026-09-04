@@ -71,6 +71,7 @@ class MujocoServerPassive(MujocoServer):
             physics_thread.start()
 
             fps = FpsCounter()
+            last_slow_render_warning = 0.0
 
             UI_FPS_CAP_RATE = (
                 self.camera_manager.camera_rate
@@ -97,11 +98,12 @@ class MujocoServerPassive(MujocoServer):
                 if time_until_next_ui_update > 0:
                     # Put the UI thread to sleep so that the physics thread can do work, to mitigate `viewer.lock()` taking up ticks.
                     time.sleep(time_until_next_ui_update)
-                else:
+                elif time.perf_counter() - last_slow_render_warning >= 5.0:
                     click.secho(
                         f"WARNING: Passive viewer and camera rendering is below the requested {1/self.camera_manager.camera_rate}FPS on the last render.",
                         fg="yellow",
                     )
+                    last_slow_render_warning = time.perf_counter()
 
             self.close()
 

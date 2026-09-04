@@ -619,6 +619,7 @@ class Robot:
         self.config = config or load_sim_config()
         self.world = World(self.config)
         self._sim = StretchMujocoSimulator(**self.world.simulator_kwargs())
+        self._object_manipulator = None
         self._waiting_for: set[Joint | Base] = set()
         self._motion_lock = threading.Lock()
         self._command_complete = threading.Event()
@@ -664,6 +665,16 @@ class Robot:
         for joint in self._joints:
             joint._startup(status)
         self.base._startup()
+        self.world.bind(self._sim)
+
+        if self.world.objects:
+            from .object_manipulator import ObjectManipulator
+
+            self._object_manipulator = ObjectManipulator(
+                self.world,
+                self.config.object_controls,
+            )
+            self._object_manipulator.start()
 
         self._controller_thread = threading.Thread(
             target=self._run_joint_controller,
@@ -763,6 +774,8 @@ class Robot:
 
     def stop(self) -> None:
         self._stop_controller.set()
+        if self._object_manipulator is not None:
+            self._object_manipulator.stop()
         if self._controller_thread is not None:
             self._controller_thread.join()
 

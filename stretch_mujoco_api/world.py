@@ -10,10 +10,70 @@ from stretch_mujoco import utils
 from .sim_config import MeshObject, SimConfig
 
 
+class WorldObject:
+    def __init__(self, simulator, name: str):
+        self._simulator = simulator
+        self.name = name
+
+    @property
+    def pose(self):
+        pose = self._simulator.get_object_pose(self.name)
+        if pose is None:
+            raise RuntimeError(f"Object is unavailable: {self.name}")
+        return pose
+
+    @property
+    def position(self):
+        pose = self.pose
+        return pose["x"], pose["y"], pose["z"]
+
+    @property
+    def orientation(self):
+        pose = self.pose
+        return pose["qw"], pose["qx"], pose["qy"], pose["qz"]
+
+    def move_to(self, position=None, orientation=None):
+        position = self.position if position is None else position
+        orientation = self.orientation if orientation is None else orientation
+        self._simulator.set_object_pose(self.name, {
+            "x": position[0], "y": position[1], "z": position[2],
+            "qw": orientation[0], "qx": orientation[1],
+            "qy": orientation[2], "qz": orientation[3],
+        })
+
+    def move_by(self, x=0.0, y=0.0, z=0.0, roll=0.0, pitch=0.0, yaw=0.0):
+        self._simulator.move_object_by(self.name, {
+            "x": x, "y": y, "z": z,
+            "roll": roll, "pitch": pitch, "yaw": yaw,
+        })
+
+    def set_gravity(self, enabled: bool):
+        self._simulator.set_object_gravity(self.name, enabled)
+
+
 class World:
     def __init__(self, config: SimConfig):
         self.config = config
+        self.objects = {}
+        self._simulator = None
         self._validate()
+
+    def bind(self, simulator):
+        self._simulator = simulator
+        names = simulator.pull_status().object_poses
+        configured = [obj.name for obj in self.config.objects]
+        discovered = [name for name in names if name not in configured]
+        self.objects = {
+            name: WorldObject(simulator, name)
+            for name in configured + discovered
+            if name in names
+            if name != "base_link"
+        }
+
+    def get_object(self, name: str):
+        if name not in self.objects:
+            raise KeyError(f"Unknown movable object: {name}")
+        return self.objects[name]
 
     def _validate(self):
         if self.config.robocasa.enabled and self.config.scene is not None:
@@ -22,6 +82,8 @@ class World:
             raise ValueError("camera_rate must be positive")
         if self.config.timestep is not None and self.config.timestep <= 0:
             raise ValueError("timestep must be positive")
+        if self.config.object_controls.update_rate <= 0:
+            raise ValueError("object control update_rate must be positive")
         for obj in self.config.objects:
             if not obj.name:
                 raise ValueError("Object names cannot be empty")

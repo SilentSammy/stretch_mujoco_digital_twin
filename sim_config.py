@@ -1,5 +1,6 @@
 from stretch_mujoco_api.sim_config import (
     MeshObject,
+    ObjectControlsConfig,
     RoboCasaConfig,
     RobotPose,
     SimConfig,
@@ -15,6 +16,7 @@ _DEFAULT = SimConfig(
     use_passive_viewer=True,
     camera_rate=30.0,
     timestep=None,
+    object_controls=ObjectControlsConfig(enabled=True),
 )
 
 _OBJECT = SimConfig(
@@ -34,6 +36,20 @@ _OBJECT = SimConfig(
             density=1000.0,
             gravity=True,
         ),
+    ],
+)
+
+_ANDROID_ARMY = SimConfig(
+    objects=[
+        MeshObject.from_folder(
+            "stretch_mujoco/models/assets/custom_objects/"
+            "mujoco_scanned_objects/models/Android_Lego",
+            name=f"android_{row}_{column}",
+            position=(0.6 + row * 0.2, -0.4 + column * 0.2, 0.02),
+            scale=(0.5, 0.5, 0.5),
+        )
+        for row in range(5)
+        for column in range(5)
     ],
 )
 

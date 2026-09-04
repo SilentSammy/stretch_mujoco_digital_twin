@@ -24,6 +24,7 @@ pressed_keys = set()
 just_pressed_keys = set()
 just_released_keys = set()
 toggles = {}
+_input_interceptor = None
 
 # Map raw ev.code → friendly button name
 _CODE_TO_NAME = {
@@ -70,6 +71,23 @@ def _repr_button(code: str) -> str:
     """Return a friendly name for a raw event code."""
     return _CODE_TO_NAME.get(code, code)
 
+
+def _normalize_axis(axis_name: str, value: float) -> float:
+    if axis_name in ("LX", "LY", "RX", "RY"):
+        normalized = value / (32767.0 if value >= 0 else 32768.0)
+        if INVERT_Y_AXIS and axis_name in ("LY", "RY"):
+            normalized = -normalized
+        return round(normalized, 1)
+    if axis_name in ("LT", "RT"):
+        return value / (255 if value <= 255 else 1023)
+    if axis_name == "DPAD_Y":
+        return -value
+    return value
+
+
+def _is_consumed(source, name, value):
+    return _input_interceptor and _input_interceptor(source, name, value)
+
 # ——————————————————————————————————————————————————————————————
 # Background event loop
 
@@ -96,6 +114,11 @@ def _gamepad_event_loop():
             # DIGITAL BUTTONS
             if ev.ev_type == 'Key':
                 name = _repr_button(ev.code)
+                if _is_consumed("gamepad", name, bool(ev.state)):
+                    if name in _pressed_buttons:
+                        _pressed_buttons.discard(name)
+                        _just_released_buttons.add(name)
+                    continue
                 if ev.state == 1:
                     if name not in _pressed_buttons:
                         _just_pressed_buttons.add(name)
@@ -112,6 +135,9 @@ def _gamepad_event_loop():
                 if not axis:
                     continue
                 value = ev.state
+                if _is_consumed("gamepad", axis, _normalize_axis(axis, value)):
+                    _axis_states.pop(axis, None)
+                    continue
                 # update raw axis state
                 _axis_states[axis] = value
 
@@ -180,6 +206,11 @@ if KEYBOARD_AVAILABLE:
         # Filter out None values before adding to sets
         if key_repr is None:
             return
+        if _is_consumed("keyboard", key_repr, True):
+            if key_repr in pressed_keys:
+                pressed_keys.discard(key_repr)
+                just_released_keys.add(key_repr)
+            return
         # Only mark as just pressed if it wasn't already noted as down.
         if key_repr not in pressed_keys:
             just_pressed_keys.add(key_repr)
@@ -193,11 +224,38 @@ if KEYBOARD_AVAILABLE:
         # Filter out None values
         if key_repr is None:
             return
+        if _is_consumed("keyboard", key_repr, False):
+            return
         pressed_keys.discard(key_repr)
         # Mark the key as just released for falling edge detection.
         just_released_keys.add(key_repr)
 
     keyboard.Listener(on_press=_on_press, on_release=_on_release).start()
+
+
+def set_input_interceptor(callback):
+    """Let a component consume keyboard or gamepad events."""
+    global _input_interceptor
+    if _input_interceptor not in (None, callback):
+        raise RuntimeError("An input interceptor is already active")
+    _input_interceptor = callback
+
+
+def clear_input_interceptor(callback):
+    global _input_interceptor
+    if _input_interceptor == callback:
+        _input_interceptor = None
+
+
+def release_inputs():
+    """Expose all currently held keyboard and gamepad inputs as released."""
+    just_released_keys.update(pressed_keys)
+    pressed_keys.clear()
+    just_pressed_keys.clear()
+    _just_released_buttons.update(_pressed_buttons)
+    _pressed_buttons.clear()
+    _just_pressed_buttons.clear()
+    _axis_states.clear()
 
 # ——————————————————————————————————————————————————————————————
 # Public API (unified for both gamepad and keyboard)
@@ -251,23 +309,7 @@ def get_axis(axis_name: str, normalize: bool = True) -> float:
     val = _axis_states.get(axis_name, 0)
     if not normalize:
         return val
-    # sticks: -32768..32767 -> -1.0..1.0
-    if axis_name in ("LX", "LY", "RX", "RY"):
-        normalized = val / (32767.0 if val >= 0 else 32768.0)
-        # Apply Y-axis inversion if enabled
-        if INVERT_Y_AXIS and axis_name in ("LY", "RY"):
-            normalized = -normalized
-        return round(normalized, 1)
-    # triggers: 0..255 or 0..1023 -> 0.0..1.0
-    if axis_name in ("LT", "RT"):
-        maxv = 255 if val <= 255 else 1023
-        return val / maxv
-    # D-pad: already -1,0,1
-    if axis_name == "DPAD_Y":
-        return -val  # Inverted to match expected behavior
-    if axis_name == "DPAD_X":
-        return val
-    return val
+    return _normalize_axis(axis_name, val)
 
 # Helpers for common use cases
 def get_bipolar_ctrl(high_key=None, low_key=None, high_game=None, low_game=None, keyboard_scale=1.0, game_scale=1.0):
