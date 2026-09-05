@@ -199,4 +199,4 @@ _ROBOCASA_OBJECT = SimConfig(
 )
 
 # Select the configuration to use.
-CONFIG = _ARUCO_CUBES
+CONFIG = _DEFAULT

@@ -100,17 +100,30 @@ sudo apt install build-essential python3-dev linux-headers-$(uname -r)
 Run the simulator:
 
 \begin{lstlisting}[language=bash]
-uv run teleop_demo.py
+uv run examples/teleop_demo_cam.py
 \end{lstlisting}
 
 You should see:
 \begin{itemize}
-    \item Terminal: \texttt{=== Running on simulation backend ===}
     \item MuJoCo viewer with Stretch robot
     \item Two colored blocks (blue box and red cylinder)
 \end{itemize}
 
 \textbf{Important:} Before controlling the robot, click away from the MuJoCo viewer (e.g., click the taskbar or another window). This prevents keyboard inputs from triggering simulator functions. The controls will still work when the window is unfocused.
+
+\subsection*{Camera Feeds}
+
+The teleoperation demo also provides the robot's five camera feeds. They begin
+disabled to reduce simulator lag. Press \texttt{1} through \texttt{5} to toggle,
+respectively, head RGB, head depth, wrist RGB, wrist depth, and wide-angle RGB.
+Press \texttt{Q} or Escape to close the demo.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.72\linewidth]{camera_feeds.png}
+    \caption{Head RGB, head depth, wrist RGB, wrist depth, and wide-angle camera feeds.}
+    \label{fig:camera_feeds}
+\end{figure}
 
 \begin{figure}[H]
     \centering
@@ -187,10 +200,16 @@ uv run third_party/robocasa/robocasa/scripts/download_kitchen_assets.py
 
 \textbf{Note:} Asset download is ~5 GB and takes some time.
 
-Verify \texttt{stretch\_toolkit/robocasa\_config.json} has \texttt{"enabled": true}, then run:
+In \texttt{sim\_config.py}, select the RoboCasa scenario:
+
+\begin{lstlisting}[language=Python]
+CONFIG = _ROBOCASA
+\end{lstlisting}
+
+Then run:
 
 \begin{lstlisting}[language=bash]
-uv run teleop_demo.py
+uv run examples/teleop_demo_cam.py
 \end{lstlisting}
 
 You should see a kitchen environment with cabinets, counters, and appliances.
