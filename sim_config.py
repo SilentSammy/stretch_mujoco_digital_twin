@@ -1,5 +1,6 @@
 from stretch_mujoco_api.sim_config import (
     ArucoCube,
+    Cube,
     MeshObject,
     ObjectControlsConfig,
     RoboCasaConfig,
@@ -43,22 +44,110 @@ _OBJECT = SimConfig(
     ],
 )
 
-_ARUCO_GRAB_FROM_ABOVE = SimConfig(
+_CUBES = SimConfig(
+    objects=[
+        Cube(
+            name="dynamic_gravity_collision",
+            color=(1.0, 1.0, 1.0, 1.0),
+            position=(0.50, -0.15, 0.05),
+            size=0.05,
+            gravity=True,
+            physics="dynamic",
+            collision=True,
+        ),
+        Cube(
+            name="dynamic_no_gravity_collision",
+            color=(1.0, 0.2, 0.2, 1.0),
+            position=(0.50, -0.05, 0.05),
+            size=0.05,
+            gravity=False,
+            physics="dynamic",
+            collision=True,
+        ),
+        Cube(
+            name="dynamic_no_gravity_no_collision",
+            color=(1.0, 0.6, 0.2, 1.0),
+            position=(0.50, 0.05, 0.05),
+            size=0.05,
+            gravity=False,
+            physics="dynamic",
+            collision=False,
+        ),
+        Cube(
+            name="kinematic_collision",
+            color=(1.0, 1.0, 0.2, 1.0),
+            position=(0.60, -0.10, 0.05),
+            size=0.05,
+            gravity=False,
+            physics="kinematic",
+            collision=True,
+        ),
+        Cube(
+            name="kinematic_no_collision",
+            color=(0.2, 1.0, 0.2, 1.0),
+            position=(0.60, 0.10, 0.05),
+            size=0.05,
+            gravity=False,
+            physics="kinematic",
+            collision=False,
+        ),
+        Cube(
+            name="fixed_collision",
+            color=(0.2, 0.5, 1.0, 1.0),
+            position=(0.70, -0.10, 0.05),
+            size=0.05,
+            gravity=False,
+            physics="fixed",
+            collision=True,
+        ),
+        Cube(
+            name="fixed_no_collision",
+            color=(1.0, 0.2, 1.0, 1.0),
+            position=(0.70, 0.10, 0.05),
+            size=0.05,
+            gravity=False,
+            physics="fixed",
+            collision=False,
+        ),
+    ],
+)
+
+_TEXTURED_CUBE = SimConfig(
+    objects=[
+        Cube(
+            name="six_colors",
+            position=(0.6, 0.0, 0.3),
+            size=0.1,
+            # Editable PNG: 256px square faces, arranged U D L / R F B.
+            texture="stretch_mujoco/models/assets/custom_objects/cube_texture.png",
+            physics="kinematic",
+            collision=False,
+        ),
+    ],
+)
+
+_ARUCO_CUBES = SimConfig(
     objects=[
         ArucoCube(
             name="aruco_0",
             marker_id=0,
             dictionary="DICT_5X5_50",
-            position=(0.6, -0.025, 0.05),
-            orientation=(0.5, 0.5, -0.5, -0.5),
+            position=(0.65, -0.025, 0.05),
+            orientation=(1.0, 0.0, 0.0, 0.0), # Straight
             size=0.1,
-            mass=0.1,
-            gravity=False,
+        ),
+        ArucoCube(
+            name="aruco_1_six_faces",
+            marker_id=1,
+            dictionary="DICT_5X5_50",
+            position=(0.18, -0.55, 0.505),
+            size=0.05,
+            marker_faces=6,
         ),
     ],
 
     robot_pose=RobotPose(
-        position=(0.2, 0.0, 0.0),
+        position=(0.05, 0.0, 0.0),
         orientation=(0.7071, 0.0, 0.0, 0.7071),
     ),
 )
@@ -88,8 +177,8 @@ _ROBOCASA = SimConfig(
     robocasa=RoboCasaConfig(
         enabled=True,
         task="PnPCounterToCab",
-        layout=1,
-        style=1,
+        layout=0,
+        style=0,
     ),
 )
 
@@ -110,4 +199,4 @@ _ROBOCASA_OBJECT = SimConfig(
 )
 
 # Select the configuration to use.
-CONFIG = _ARUCO_GRAB_FROM_ABOVE
+CONFIG = _ARUCO_CUBES

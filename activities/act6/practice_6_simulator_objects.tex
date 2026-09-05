@@ -3,52 +3,31 @@
 \usepackage[T1]{fontenc}
 \usepackage[margin=1in]{geometry}
 \usepackage{graphicx}
-\usepackage{xcolor}
 \usepackage{float}
 \usepackage{listings}
 \usepackage{upquote}
 \usepackage{booktabs}
-\usepackage{tcolorbox}
+\usepackage{xcolor}
 
-\lstset{
-    basicstyle=\ttfamily\small,
-    breaklines=true,
-    frame=single,
-    numbers=left,
-    numberstyle=\tiny,
-    backgroundcolor=\color{gray!10},
-    keywordstyle=\color{blue},
-    commentstyle=\color{green!50!black},
-    stringstyle=\color{red},
-    showstringspaces=false
-}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,
+backgroundcolor=\color{gray!10},showstringspaces=false}
 
-\newtcolorbox{notebox}{colback=blue!5,colframe=blue!40!black,title=Note,fonttitle=\bfseries}
-
-\title{\textbf{Practice 6 -- Configuring Simulator Objects}}
-\author{
-    Robotics and Cyber-Physical Systems \\
-    School of Sciences and Engineering \\
-    Tecnol\'ogico de Monterrey
-}
+\title{\textbf{Simulator Scene Configuration Guide}}
+\author{Robotics and Cyber-Physical Systems \\
+School of Sciences and Engineering \\
+Tecnol\'ogico de Monterrey}
 \date{}
 
 \begin{document}
 \maketitle
 
-\section*{Introduction}
+This guide explains how to configure the Stretch simulator's scene. These
+settings only affect simulation; the same robot-control scripts continue to
+work on the physical robot.
 
-In this activity, you will configure the simulated world without editing the
-robot model or MuJoCo XML files. You will import textured objects, choose their
-initial poses, change the robot's starting pose, enable a RoboCasa kitchen, and
-move objects interactively.
+\section{Getting Started}
 
-These settings only affect the simulator. Robot programs can continue using
-the same \texttt{Robot} interface on the physical and simulated robots.
-
-\subsection*{Before You Begin}
-
-Update the repository and its dependencies:
+Update the repository before running a scenario:
 
 \begin{lstlisting}[language=bash]
 git pull
@@ -56,155 +35,133 @@ git submodule update --init --recursive
 uv sync
 \end{lstlisting}
 
-\section{Selecting a Configuration}
-
-Open \texttt{sim\_config.py} in the root of the repository. This file contains
-several \texttt{SimConfig} objects. The last line selects the active one:
+All scene settings live in the root-level \texttt{sim\_config.py}. Select an
+included scenario with its final line, then restart the simulated robot:
 
 \begin{lstlisting}[language=Python]
-CONFIG = _DEFAULT
+CONFIG = _CUBES
 \end{lstlisting}
 
-For example, select the Android group with:
+Start by trying the included scenarios and exploring each scene with normal
+teleop controls.
 
-\begin{lstlisting}[language=Python]
-CONFIG = _ANDROID_ARMY
-\end{lstlisting}
+\section{Included Scenarios}
 
-Every time the simulated \texttt{Robot} starts, it loads this file
-automatically. Stop and restart the script after changing \texttt{CONFIG}.
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Configuration} & \textbf{What it shows} \\
+\midrule
+\texttt{\_DEFAULT} & Default table scene and robot pose. \\
+\texttt{\_OBJECT} & One imported textured Android Lego mesh. \\
+\texttt{\_CUBES} & Dynamic, kinematic, fixed, colliding, and ghost cubes. \\
+\texttt{\_TEXTURED\_CUBE} & A six-face texture atlas on a kinematic cube. \\
+\texttt{\_ARUCO\_CUBES} & One-face and six-face ArUco cubes. \\
+\texttt{\_ANDROID\_ARMY} & Many independently movable imported meshes. \\
+\texttt{\_ROBOT\_POSE} & A changed robot starting pose. \\
+\texttt{\_ROBOCASA} & A generated RoboCasa kitchen. \\
+\texttt{\_ROBOCASA\_OBJECT} & An imported mesh inside a RoboCasa kitchen. \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\section{Importing an Object}
-
-Each imported object needs a 3D mesh. A \texttt{texture.png} file is optional,
-but gives the mesh its original colors. The included Android example uses files
-from the MuJoCo Scanned Objects collection.
-
+\IfFileExists{config_cubes.png}{
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.75\textwidth]{mujoco_scanned_objects.png}
-    \caption{Examples from the MuJoCo Scanned Objects collection.}
+    \includegraphics[width=0.72\textwidth]{config_cubes.png}
+    \caption{The \texttt{\_CUBES} configuration after launch. The
+    gravity-enabled white cube has fallen; the remaining cubes stay suspended.}
 \end{figure}
+}{}
 
-Place an object's files in a folder inside the repository, then describe it in
-\texttt{sim\_config.py}:
+\IfFileExists{config_aruco_cubes.png}{
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.72\textwidth]{config_aruco_cubes.png}
+    \caption{The \texttt{\_ARUCO\_CUBES} configuration, including the
+    six-face marker cube on the table.}
+\end{figure}
+}{}
 
-\begin{lstlisting}[language=Python]
-_OBJECT = SimConfig(
-    objects=[
-        MeshObject.from_folder(
-            "stretch_mujoco/models/assets/custom_objects/"
-            "mujoco_scanned_objects/models/Android_Lego",
-            name="configured_lego",
-            position=(0.18, -0.55, 0.55),
-        ),
-    ],
-)
-\end{lstlisting}
+\section{The \texttt{SimConfig} Object}
 
-\texttt{from\_folder()} looks for \texttt{model.obj} and
-\texttt{texture.png} by default. It also estimates a box collision shape from
-the mesh and calculates mass using a density of $1000\,\mathrm{kg/m^3}$.
-
-The most useful optional arguments are:
+Every scenario is a \texttt{SimConfig}. Its most useful fields are:
 
 \begin{itemize}
-    \item \texttt{name}: unique name used to identify and select the object.
-    \item \texttt{position=(x, y, z)}: initial world position in metres.
-    \item \texttt{orientation=(w, x, y, z)}: initial quaternion.
-    \item \texttt{scale=(x, y, z)}: mesh scale along each axis.
-    \item \texttt{gravity}: whether gravity initially affects the object.
-    \item \texttt{collision\_size}, \texttt{collision\_position},
-          \texttt{mass}, and \texttt{density}: optional physics overrides.
+    \item \texttt{objects}: meshes, cubes, and ArUco cubes to add to the scene.
+    \item \texttt{robot\_pose}: optional initial position and quaternion for the robot.
+    \item \texttt{robocasa}: enables a generated kitchen and selects its task,
+    layout, and style.
+    \item \texttt{scene}: optional custom MuJoCo scene file. Leave it unset to
+    use the default table scene.
+    \item \texttt{headless}, \texttt{show\_viewer\_ui}, \texttt{camera\_rate},
+    and \texttt{timestep}: viewer, camera, and simulation settings.
 \end{itemize}
 
-The automatic values are good starting points. Supply the physics overrides
-only if the estimated collision box or mass does not behave correctly.
+\section{Objects and Physics}
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.72\textwidth]{android_lego_scene.png}
-    \caption{A textured Android object imported into the default scene.}
-\end{figure}
+\texttt{MeshObject.from\_folder()} imports an OBJ mesh and, when present, its
+\texttt{texture.png}. \texttt{Cube} creates a box. Its \texttt{texture} can
+be \texttt{None}, a PNG path, or a NumPy image. The supplied
+\texttt{cube\_texture.png} has six square faces arranged as:
 
-\subsection{Importing Several Objects}
+\begin{center}
+\begin{tabular}{ccc}
+red $+Y$ & green $-Y$ & blue $-X$ \\
+yellow $+X$ & magenta $+Z$ & cyan $-Z$
+\end{tabular}
+\end{center}
 
-Every object must have a unique name. A comprehension is convenient when
-creating a group:
+\texttt{ArucoCube} inherits from \texttt{Cube} and generates an ArUco texture.
+Set \texttt{marker\_faces=1} for a marker on the local top face, or
+\texttt{marker\_faces=6} to repeat it on every face.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Option} & \textbf{Values} & \textbf{Meaning} \\
+\midrule
+\texttt{physics} & \texttt{dynamic} & Responds to forces; movable in object mode. \\
+& \texttt{kinematic} & Movable in object mode; unaffected by forces. \\
+& \texttt{fixed} & Anchored to the world; unavailable in object mode. \\
+\texttt{gravity} & \texttt{True}/\texttt{False} & Enables or compensates gravity for dynamic objects. \\
+\texttt{collision} & \texttt{True}/\texttt{False} & Makes an object solid or lets bodies pass through it. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The \texttt{\_CUBES} scenario is a compact comparison of these combinations.
+It is the best place to experiment with the settings.
+
+\section{Changing the Robot Start Pose}
 
 \begin{lstlisting}[language=Python]
-_ANDROID_ARMY = SimConfig(
-    objects=[
-        MeshObject.from_folder(
-            "stretch_mujoco/models/assets/custom_objects/"
-            "mujoco_scanned_objects/models/Android_Lego",
-            name=f"android_{row}_{column}",
-            position=(0.6 + row * 0.2,
-                      -0.4 + column * 0.2,
-                      0.02),
-            scale=(0.5, 0.5, 0.5),
-        )
-        for row in range(5)
-        for column in range(5)
-    ],
+RobotPose(
+    position=(0.5, 0.0, 0.0),
+    orientation=(0.7071, 0.0, 0.0, 0.7071),
 )
 \end{lstlisting}
 
-This creates 25 independently movable, half-scale Androids.
+Position uses world metres. Orientation is a quaternion in \texttt{(w, x, y, z)}
+order. The default pose is \texttt{(0, 0, 0)} with identity orientation
+\texttt{(1, 0, 0, 0)}.
 
-\section{Changing the Robot's Starting Pose}
+\section{RoboCasa Environments}
 
-Use \texttt{RobotPose} to change the simulated robot's initial world pose:
-
-\begin{lstlisting}[language=Python]
-_ROBOT_POSE = SimConfig(
-    robot_pose=RobotPose(
-        position=(0.5, 0.0, 0.0),
-        orientation=(0.7071, 0.0, 0.0, 0.7071),
-    ),
-)
-\end{lstlisting}
-
-Position is expressed in metres and orientation is a quaternion in
-\texttt{(w, x, y, z)} order. The example starts the robot 0.5 m from the world
-origin and rotated approximately $90^\circ$ around the vertical axis.
-
-\section{Using a RoboCasa Environment}
-
-RoboCasa generates a furnished kitchen instead of loading the default scene:
+Set \texttt{robocasa.enabled=True} to replace the default table scene with a
+generated RoboCasa kitchen. \texttt{task} selects the kitchen activity, while
+\texttt{layout} and \texttt{style} choose its geometry and appearance. Imported
+objects work in RoboCasa exactly as they do in the default scene.
 
 \begin{lstlisting}[language=Python]
-_ROBOCASA = SimConfig(
+SimConfig(
     robocasa=RoboCasaConfig(
         enabled=True,
         task="PnPCounterToCab",
         layout=0,
         style=0,
     ),
-)
-\end{lstlisting}
-
-\texttt{task} selects the RoboCasa task, while \texttt{layout} and
-\texttt{style} select the kitchen geometry and appearance.
-
-Objects use exactly the same \texttt{MeshObject} configuration in the default
-scene and in RoboCasa:
-
-\begin{lstlisting}[language=Python]
-_ROBOCASA_OBJECT = SimConfig(
-    robocasa=RoboCasaConfig(
-        enabled=True,
-        task="PnPCounterToCab",
-        layout=0,
-        style=0,
-    ),
-    objects=[
-        MeshObject.from_folder(
-            "stretch_mujoco/models/assets/custom_objects/"
-            "mujoco_scanned_objects/models/Android_Lego",
-            position=(0.0, 0.0, 1.0),
-        ),
-    ],
+    objects=[...],
 )
 \end{lstlisting}
 
@@ -214,68 +171,41 @@ _ROBOCASA_OBJECT = SimConfig(
     \caption{A custom object imported into a generated RoboCasa kitchen.}
 \end{figure}
 
-\section{Moving Objects Interactively}
+\section{Interactive Object Controls}
 
-Object controls start automatically whenever the scene contains movable
-objects. Run any simulated robot script, then press \texttt{T} to switch
-between robot control and object control. No changes to the script are needed.
+Scenes with dynamic or kinematic objects automatically enable object controls.
+Press \texttt{T} or gamepad START to enter object mode; normal teleop input is
+temporarily hidden. Press \texttt{T} again to return to robot control and print
+the changed objects' reusable poses.
 
 \begin{center}
 \begin{tabular}{lll}
 \toprule
 \textbf{Keyboard} & \textbf{Gamepad} & \textbf{Action} \\
 \midrule
-\texttt{T} & START & Toggle object-control mode \\
-\texttt{M} / \texttt{N} & RB / LB & Next / previous object \\
-\texttt{WASD} & Left stick & Move horizontally \\
-\texttt{Z} / \texttt{X} & Right stick Y & Move up / down \\
-\texttt{U} / \texttt{O} & LT + right stick X & Roll \\
-\texttt{I} / \texttt{K} & LT + right stick Y & Pitch \\
-\texttt{J} / \texttt{L} & LT + left stick X & Yaw \\
-\texttt{G} & Y & Disable gravity; object floats \\
-\texttt{F} & B & Enable gravity; object falls \\
+\texttt{M} / \texttt{N} & RB / LB & Select next / previous object \\
+\texttt{W} / \texttt{S} & Left stick Y & World $+Y$ / $-Y$ \\
+\texttt{D} / \texttt{A} & Left stick X & World $+X$ / $-X$ \\
+\texttt{Z} / \texttt{X} & Right stick Y & World $+Z$ / $-Z$ \\
+\texttt{U/O}, \texttt{I/K}, \texttt{J/L} & LT + sticks & Roll, pitch, yaw \\
+\texttt{G} / \texttt{F} & Y / B & Disable / enable gravity \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-While object mode is active, these keyboard and gamepad commands are hidden
-from \texttt{TeleopProvider}. This prevents the same input from moving the
-robot and an object simultaneously.
-
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.72\textwidth]{object_control_demo.png}
-    \caption{An object being repositioned interactively in MuJoCo.}
+    \caption{An object being repositioned in object-control mode.}
 \end{figure}
 
-\begin{notebox}
-Disable gravity before placing an object in mid-air. Re-enable it afterward to
-let the object settle naturally onto a table or the floor.
-\end{notebox}
+\section{Creating Your Own Scene}
 
-\section{Optional Programmatic Control}
-
-Simulator-specific experiments can also access objects through
-\texttt{robot.world}:
-
-\begin{lstlisting}[language=Python]
-android = robot.world.get_object("configured_lego")
-
-print(android.position)
-android.move_by(x=0.10, yaw=0.25)
-android.move_to(position=(0.5, 0.0, 0.8))
-android.set_gravity(False)
-\end{lstlisting}
-
-\texttt{move\_by()} applies a relative translation or rotation.
-\texttt{move\_to()} assigns an absolute world pose. This API is useful for
-simulator-specific tests; portable robot scripts should rely on the automatic
-controls instead.
-
-\section*{Expected Result}
-
-You should be able to select a configuration, import one or many textured
-objects, launch either the default scene or RoboCasa, and reposition every
-movable object without modifying the robot-control script.
+Copy an included \texttt{SimConfig}, rename it, and select it with
+\texttt{CONFIG}. Give each object a unique \texttt{name}, then set its
+\texttt{position}, \texttt{size} or \texttt{scale}, and the physics options
+that differ from their defaults. Use object controls to place objects visually;
+leaving object mode prints a pose that can be copied into
+\texttt{sim\_config.py} for the next run.
 
 \end{document}

@@ -8,7 +8,7 @@ import numpy as np
 
 from stretch_mujoco import utils
 
-from .sim_config import ArucoCube, MeshObject, SimConfig
+from .sim_config import Cube, MeshObject, SimConfig
 
 
 class WorldObject:
@@ -96,13 +96,9 @@ class World:
                 raise ValueError(
                     f"Object physics must be dynamic, kinematic, or fixed: {obj.name}"
                 )
-            if isinstance(obj, ArucoCube):
+            if isinstance(obj, Cube):
                 if obj.size <= 0:
-                    raise ValueError(f"ArUco cube size must be positive: {obj.name}")
-                if obj.texture_size <= 0:
-                    raise ValueError(f"ArUco texture size must be positive: {obj.name}")
-                if obj.marker_faces not in (0, 1, 6):
-                    raise ValueError(f"ArUco marker_faces must be 0, 1, or 6: {obj.name}")
+                    raise ValueError(f"Cube size must be positive: {obj.name}")
                 continue
             if any(scale <= 0 for scale in obj.scale):
                 raise ValueError(f"Object scale must be positive: {obj.name}")
@@ -138,8 +134,8 @@ class World:
                 if obj.name in names:
                     raise ValueError(f"Duplicate object name: {obj.name}")
                 names.add(obj.name)
-                if isinstance(obj, ArucoCube):
-                    texture_path = self._add_aruco_cube(spec, obj)
+                if isinstance(obj, Cube):
+                    texture_path = self._add_cube(spec, obj)
                     if texture_path is not None:
                         temporary_assets.append(texture_path)
                 else:
@@ -246,28 +242,25 @@ class World:
 
         body.add_geom(**visual)
 
-    def _add_aruco_cube(self, spec, obj: ArucoCube):
+    def _add_cube(self, spec, obj: Cube):
         texture_path = None
         material_name = None
-        if obj.marker_faces:
+        texture = obj.get_texture()
+        if texture is not None:
             import cv2
 
-            dictionary_id = getattr(cv2.aruco, obj.dictionary, None)
-            if dictionary_id is None:
-                raise ValueError(f"Unknown ArUco dictionary: {obj.dictionary}")
-
-            dictionary = cv2.aruco.getPredefinedDictionary(dictionary_id)
-            marker_size = round(obj.texture_size * 0.8)
-            marker = cv2.aruco.generateImageMarker(dictionary, obj.marker_id, marker_size)
-            face = np.full((obj.texture_size, obj.texture_size), 255, dtype=np.uint8)
-            margin = (obj.texture_size - marker_size) // 2
-            face[margin:margin + marker_size, margin:margin + marker_size] = marker
-            texture = (
-                face
-                if obj.marker_faces == 6
-                else np.block([[face, np.full_like(face, 255), np.full_like(face, 255)],
-                               [np.full_like(face, 255), np.full_like(face, 255), np.full_like(face, 255)]])
-            )
+            if isinstance(texture, (str, Path)):
+                path = self._resolve(texture)
+                texture = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+                if texture is None:
+                    raise ValueError(f"Could not read cube texture: {path}")
+            if not isinstance(texture, np.ndarray) or texture.dtype != np.uint8:
+                raise ValueError("Cube texture must be a uint8 NumPy image")
+            if texture.ndim not in (2, 3) or (texture.ndim == 3 and texture.shape[2] not in (3, 4)):
+                raise ValueError("Cube texture must be grayscale, BGR, or BGRA")
+            height, width = texture.shape[:2]
+            if height == 0 or height % 2 or width % 3 or height // 2 != width // 3:
+                raise ValueError("Cube texture must contain 2 rows and 3 columns of square faces")
 
             temporary = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
             temporary.close()
@@ -276,18 +269,13 @@ class World:
 
             texture_name = f"{obj.name}_texture"
             material_name = f"{obj.name}_material"
-            texture_args = {
-                "name": texture_name,
-                "type": mujoco.mjtTexture.mjTEXTURE_CUBE,
-                "file": str(texture_path),
-                "rgb1": obj.color[:3],
-            }
-            if obj.marker_faces == 1:
-                texture_args.update(
-                    gridsize=(2, 3),
-                    gridlayout=list("U.....") + ["\0"] * 7,
-                )
-            spec.add_texture(**texture_args)
+            spec.add_texture(
+                name=texture_name,
+                type=mujoco.mjtTexture.mjTEXTURE_CUBE,
+                file=str(texture_path),
+                gridsize=(2, 3),
+                gridlayout=list("UDLRFB") + ["\0"] * 7,
+            )
             spec.add_material(
                 name=material_name,
                 textures=["", texture_name],
