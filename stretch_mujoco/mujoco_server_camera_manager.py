@@ -48,7 +48,19 @@ class MujocoServerCameraManagerSync:
         Clean up renderer resources
         """
         for renderer in self.camera_renderers.values():
-            renderer.close()
+            self._close_camera_renderer(renderer)
+
+    @staticmethod
+    def _close_camera_renderer(renderer):
+        # MuJoCo's Renderer.close() frees GL resources without making their
+        # context current first. That can corrupt another active camera.
+        # Free them in their own context, before close() destroys that context.
+        if renderer._gl_context is not None:
+            renderer._gl_context.make_current()
+        if renderer._mjr_context is not None:
+            renderer._mjr_context.free()
+            renderer._mjr_context = None
+        renderer.close()
 
     def is_ready_to_pull_camera_data(self, is_sleep_until_ready: bool = False):
         """
@@ -93,7 +105,7 @@ class MujocoServerCameraManagerSync:
             for camera in self._cameras_to_remove:
                 if camera in self.camera_renderers:
                     try:
-                        self.camera_renderers[camera].close()
+                        self._close_camera_renderer(self.camera_renderers[camera])
                         del self.camera_renderers[camera]
                         print(f"[CameraManager] Successfully removed camera: {camera.name}")
                     except Exception as e:

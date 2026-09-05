@@ -127,7 +127,6 @@ def main():
     grabbed = False
     stowed = False
     phase = "navigate"
-    next_diagnostic = 0.0
     wrist_distance = None
     wrist_center_error = None
     wrist_authority = None
@@ -273,18 +272,9 @@ def main():
                     gripper_ready = True
 
                 success, wrist_rgb, wrist_depth = WRIST_CAMERA.get_frames()
-                raw_wrist_center = None
-                raw_wrist_distance = None
                 wrist_center = None
                 if success:
-                    raw_wrist_center = detect_object(wrist_rgb)
-                    if raw_wrist_center is not None:
-                        raw_wrist_distance = WRIST_CAMERA.get_depth(
-                            raw_wrist_center,
-                            wrist_depth,
-                            sample_radius=15,
-                        )
-                    wrist_center = raw_wrist_center
+                    wrist_center = detect_object(wrist_rgb)
                     if wrist_center and not grabbed:
                         horizontal_error, vertical_error = center_object_with_wrist()
                         reach_for_object(horizontal_error, vertical_error)
@@ -294,16 +284,6 @@ def main():
                     cv2.imshow("Wrist Depth", depth_display)
 
                 update_gripper()
-
-                now = time.monotonic()
-                if now >= next_diagnostic:
-                    print(
-                        f"depth: ok={success}, "
-                        f"range={int(wrist_depth.min()) if success else None}-"
-                        f"{int(wrist_depth.max()) if success else None}, "
-                        f"sample={raw_wrist_distance}, distance={wrist_distance}"
-                    )
-                    next_diagnostic = now + 0.5
 
             command.update(lift_controller.get_command())
             command = teleop.get_manual_override(command)
