@@ -228,7 +228,7 @@ class StretchMujocoSimulator:
         body_name: str,
         pose: dict,
     ) -> None:
-        """Teleport a freejoint object to a new world pose.
+        """Teleport a movable object to a new world pose.
 
         Args:
             body_name: Body name as defined in the scene XML.
@@ -263,7 +263,7 @@ class StretchMujocoSimulator:
         delta: dict,
         z_min: float | None = None,
     ) -> None:
-        """Move a freejoint object by a relative offset from its current pose.
+        """Move a movable object by a relative offset from its current pose.
 
         Args:
             body_name: Body name as defined in the scene XML.
@@ -307,7 +307,7 @@ class StretchMujocoSimulator:
 
     @require_connection
     def get_object_pose(self, body_name: str) -> dict | None:
-        """Get the current world pose of a freejoint body.
+        """Get the current world pose of a movable body.
 
         Returns:
             Dict with keys x, y, z, qw, qx, qy, qz, or None if not found.

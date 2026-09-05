@@ -1,4 +1,5 @@
 from stretch_mujoco_api.sim_config import (
+    ArucoCube,
     MeshObject,
     ObjectControlsConfig,
     RoboCasaConfig,
@@ -10,7 +11,10 @@ _DEFAULT = SimConfig(
     scene=None,
     robocasa=RoboCasaConfig(enabled=False),
     objects=[],
-    robot_pose=None,
+    robot_pose=RobotPose(
+        position=(0.0, 0.0, 0.0),
+        orientation=(1.0, 0.0, 0.0, 0.0),
+    ),
     headless=False,
     show_viewer_ui=False,
     use_passive_viewer=True,
@@ -37,6 +41,26 @@ _OBJECT = SimConfig(
             gravity=True,
         ),
     ],
+)
+
+_ARUCO_GRAB_FROM_ABOVE = SimConfig(
+    objects=[
+        ArucoCube(
+            name="aruco_0",
+            marker_id=0,
+            dictionary="DICT_5X5_50",
+            position=(0.6, -0.025, 0.05),
+            orientation=(0.5, 0.5, -0.5, -0.5),
+            size=0.1,
+            mass=0.1,
+            gravity=False,
+        ),
+    ],
+
+    robot_pose=RobotPose(
+        position=(0.2, 0.0, 0.0),
+        orientation=(0.7071, 0.0, 0.0, 0.7071),
+    ),
 )
 
 _ANDROID_ARMY = SimConfig(
@@ -86,4 +110,4 @@ _ROBOCASA_OBJECT = SimConfig(
 )
 
 # Select the configuration to use.
-CONFIG = _DEFAULT
+CONFIG = _ARUCO_GRAB_FROM_ABOVE

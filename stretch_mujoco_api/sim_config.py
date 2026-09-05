@@ -32,6 +32,8 @@ class MeshObject:
     mass: float | None = None
     density: float = 1000.0
     gravity: bool = True
+    physics: str = "dynamic"
+    collision: bool = True
 
     @classmethod
     def from_folder(
@@ -50,6 +52,24 @@ class MeshObject:
             texture=folder / texture_file if texture_file else None,
             **kwargs,
         )
+
+
+@dataclass
+class ArucoCube:
+    name: str
+    marker_id: int
+    position: tuple[float, float, float]
+    size: float = 0.1
+    dictionary: str = "DICT_4X4_50"
+    orientation: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+    mass: float | None = None
+    density: float = 1000.0
+    gravity: bool = True
+    texture_size: int = 512
+    marker_faces: int = 1
+    physics: str = "dynamic"
+    collision: bool = True
+    color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
 
 
 @dataclass
@@ -90,7 +110,7 @@ class ObjectControlsConfig:
 class SimConfig:
     scene: str | Path | None = None
     robocasa: RoboCasaConfig = field(default_factory=RoboCasaConfig)
-    objects: list[MeshObject] = field(default_factory=list)
+    objects: list[MeshObject | ArucoCube] = field(default_factory=list)
     robot_pose: RobotPose | None = None
     headless: bool = False
     show_viewer_ui: bool = False

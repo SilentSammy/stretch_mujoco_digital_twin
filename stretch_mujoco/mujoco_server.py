@@ -209,10 +209,17 @@ class MujocoServer:
         position: tuple[float, float, float],
         quat: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
     ):
-        """Teleport a freejoint body to a new world pose."""
+        """Teleport a freejoint or mocap body to a new world pose."""
         body_id = mujoco.mj_name2id(self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_name)
         if body_id == -1:
             print(f"[MujocoServer] Body '{body_name}' not found.")
+            return
+
+        mocap_id = self.mjmodel.body_mocapid[body_id]
+        if mocap_id != -1:
+            self.mjdata.mocap_pos[mocap_id] = position
+            self.mjdata.mocap_quat[mocap_id] = quat
+            mujoco.mj_forward(self.mjmodel, self.mjdata)
             return
 
         joint_id = next(
@@ -239,10 +246,24 @@ class MujocoServer:
         delta: tuple[float, float, float, float, float, float],
         z_min: float | None = None,
     ):
-        """Move a freejoint body by a relative offset (position + euler rotation) from its current pose."""
+        """Move a freejoint or mocap body by a relative pose offset."""
         body_id = mujoco.mj_name2id(self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_name)
         if body_id == -1:
             print(f"[MujocoServer] Body '{body_name}' not found.")
+            return
+
+        mocap_id = self.mjmodel.body_mocapid[body_id]
+        if mocap_id != -1:
+            position = self.mjdata.mocap_pos[mocap_id]
+            quat = self.mjdata.mocap_quat[mocap_id]
+            dx, dy, dz, droll, dpitch, dyaw = delta
+            position[:] += (dx, dy, dz)
+            if z_min is not None:
+                position[2] = max(position[2], z_min)
+            if droll != 0.0 or dpitch != 0.0 or dyaw != 0.0:
+                delta_quat = euler_to_quat(droll, dpitch, dyaw)
+                quat[:] = quat_normalize(quat_mul(tuple(quat), delta_quat))
+            mujoco.mj_forward(self.mjmodel, self.mjdata)
             return
 
         joint_id = next(
@@ -603,6 +624,19 @@ class MujocoServer:
                 if body_name:
                     qadr = self.mjmodel.jnt_qposadr[i]
                     object_poses[body_name] = tuple(float(v) for v in self.mjdata.qpos[qadr:qadr + 7])
+        for body_id in range(self.mjmodel.nbody):
+            mocap_id = self.mjmodel.body_mocapid[body_id]
+            if mocap_id != -1:
+                body_name = mujoco.mj_id2name(
+                    self.mjmodel, mujoco.mjtObj.mjOBJ_BODY, body_id
+                )
+                if body_name:
+                    object_poses[body_name] = tuple(
+                        float(v) for v in np.concatenate((
+                            self.mjdata.mocap_pos[mocap_id],
+                            self.mjdata.mocap_quat[mocap_id],
+                        ))
+                    )
         new_status.object_poses = object_poses
 
         self.data_proxies.set_status(new_status)

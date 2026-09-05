@@ -16,6 +16,7 @@ class ObjectManipulator:
         self._gamepad_axes = {}
         self._toggle_down = False
         self._selected = 0
+        self._moved_objects = []
         self._stop = threading.Event()
         self._thread = None
 
@@ -51,7 +52,10 @@ class ObjectManipulator:
                 self._gamepad_buttons.clear()
                 self._gamepad_axes.clear()
                 if self.active:
+                    self._moved_objects.clear()
                     input.release_inputs()
+                else:
+                    self._print_moved_poses()
                 state = "ON" if self.active else "OFF"
                 selected = f" ({self.selected.name})" if self.active else ""
                 print(f"Object controls: {state}{selected}")
@@ -110,6 +114,15 @@ class ObjectManipulator:
         self._selected = (self._selected + direction) % len(self.world.objects)
         print(f"Selected object: {self.selected.name}")
 
+    def _print_moved_poses(self):
+        for name in self._moved_objects:
+            obj = self.world.objects[name]
+            position = ", ".join(f"{value:.6f}" for value in obj.position)
+            orientation = ", ".join(f"{value:.6f}" for value in obj.orientation)
+            print(f"{name}:")
+            print(f"    position=({position})")
+            print(f"    orientation=({orientation})")
+
     def _run(self):
         period = 1.0 / self.config.update_rate
         while not self._stop.wait(period):
@@ -147,3 +160,5 @@ class ObjectManipulator:
             )
             if any(delta):
                 obj.move_by(*delta)
+                if obj.name not in self._moved_objects:
+                    self._moved_objects.append(obj.name)

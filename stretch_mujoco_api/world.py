@@ -1,13 +1,14 @@
 """Build a MuJoCo world from a scene-independent simulation configuration."""
 
 from pathlib import Path
+import tempfile
 
 import mujoco
 import numpy as np
 
 from stretch_mujoco import utils
 
-from .sim_config import MeshObject, SimConfig
+from .sim_config import ArucoCube, MeshObject, SimConfig
 
 
 class WorldObject:
@@ -91,6 +92,18 @@ class World:
                 raise ValueError(f"Object mass must be positive: {obj.name}")
             if obj.density <= 0:
                 raise ValueError(f"Object density must be positive: {obj.name}")
+            if obj.physics not in ("dynamic", "kinematic", "fixed"):
+                raise ValueError(
+                    f"Object physics must be dynamic, kinematic, or fixed: {obj.name}"
+                )
+            if isinstance(obj, ArucoCube):
+                if obj.size <= 0:
+                    raise ValueError(f"ArUco cube size must be positive: {obj.name}")
+                if obj.texture_size <= 0:
+                    raise ValueError(f"ArUco texture size must be positive: {obj.name}")
+                if obj.marker_faces not in (0, 1, 6):
+                    raise ValueError(f"ArUco marker_faces must be 0, 1, or 6: {obj.name}")
+                continue
             if any(scale <= 0 for scale in obj.scale):
                 raise ValueError(f"Object scale must be positive: {obj.name}")
             if obj.collision_size and any(size <= 0 for size in obj.collision_size):
@@ -118,14 +131,24 @@ class World:
             spec = mujoco.MjSpec.from_file(str(scene))
             scene = None
 
-        names = set()
-        for obj in self.config.objects:
-            if obj.name in names:
-                raise ValueError(f"Duplicate object name: {obj.name}")
-            names.add(obj.name)
-            self._add_object(spec, obj)
+        temporary_assets = []
+        try:
+            names = set()
+            for obj in self.config.objects:
+                if obj.name in names:
+                    raise ValueError(f"Duplicate object name: {obj.name}")
+                names.add(obj.name)
+                if isinstance(obj, ArucoCube):
+                    texture_path = self._add_aruco_cube(spec, obj)
+                    if texture_path is not None:
+                        temporary_assets.append(texture_path)
+                else:
+                    self._add_object(spec, obj)
 
-        model = spec.compile()
+            model = spec.compile()
+        finally:
+            for path in temporary_assets:
+                path.unlink(missing_ok=True)
         if self.config.timestep is not None:
             model.opt.timestep = self.config.timestep
         return model, scene
@@ -195,8 +218,10 @@ class World:
             pos=obj.position,
             quat=obj.orientation,
             gravcomp=0.0 if obj.gravity else 1.0,
+            mocap=obj.physics == "kinematic",
         )
-        body.add_freejoint()
+        if obj.physics == "dynamic":
+            body.add_freejoint()
 
         visual = {
             "name": f"{obj.name}_visual",
@@ -215,9 +240,86 @@ class World:
             mass=mass,
             rgba=(1.0, 0.0, 0.0, 0.0),
             friction=(1.0, 0.005, 0.0001),
+            contype=1 if obj.collision else 0,
+            conaffinity=1 if obj.collision else 0,
         )
 
         body.add_geom(**visual)
+
+    def _add_aruco_cube(self, spec, obj: ArucoCube):
+        texture_path = None
+        material_name = None
+        if obj.marker_faces:
+            import cv2
+
+            dictionary_id = getattr(cv2.aruco, obj.dictionary, None)
+            if dictionary_id is None:
+                raise ValueError(f"Unknown ArUco dictionary: {obj.dictionary}")
+
+            dictionary = cv2.aruco.getPredefinedDictionary(dictionary_id)
+            marker_size = round(obj.texture_size * 0.8)
+            marker = cv2.aruco.generateImageMarker(dictionary, obj.marker_id, marker_size)
+            face = np.full((obj.texture_size, obj.texture_size), 255, dtype=np.uint8)
+            margin = (obj.texture_size - marker_size) // 2
+            face[margin:margin + marker_size, margin:margin + marker_size] = marker
+            texture = (
+                face
+                if obj.marker_faces == 6
+                else np.block([[face, np.full_like(face, 255), np.full_like(face, 255)],
+                               [np.full_like(face, 255), np.full_like(face, 255), np.full_like(face, 255)]])
+            )
+
+            temporary = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            temporary.close()
+            texture_path = Path(temporary.name)
+            cv2.imwrite(str(texture_path), texture)
+
+            texture_name = f"{obj.name}_texture"
+            material_name = f"{obj.name}_material"
+            texture_args = {
+                "name": texture_name,
+                "type": mujoco.mjtTexture.mjTEXTURE_CUBE,
+                "file": str(texture_path),
+                "rgb1": obj.color[:3],
+            }
+            if obj.marker_faces == 1:
+                texture_args.update(
+                    gridsize=(2, 3),
+                    gridlayout=list("U.....") + ["\0"] * 7,
+                )
+            spec.add_texture(**texture_args)
+            spec.add_material(
+                name=material_name,
+                textures=["", texture_name],
+                specular=0.0,
+                shininess=0.0,
+                reflectance=0.0,
+            )
+
+        body = spec.worldbody.add_body(
+            name=obj.name,
+            pos=obj.position,
+            quat=obj.orientation,
+            gravcomp=0.0 if obj.gravity else 1.0,
+            mocap=obj.physics == "kinematic",
+        )
+        if obj.physics == "dynamic":
+            body.add_freejoint()
+        mass = obj.mass if obj.mass is not None else obj.density * obj.size ** 3
+        geom = {
+            "name": f"{obj.name}_cube",
+            "type": mujoco.mjtGeom.mjGEOM_BOX,
+            "size": (obj.size / 2,) * 3,
+            "mass": mass,
+            "friction": (1.0, 0.005, 0.0001),
+            "contype": 1 if obj.collision else 0,
+            "conaffinity": 1 if obj.collision else 0,
+            "rgba": obj.color,
+        }
+        if material_name:
+            geom["material"] = material_name
+        body.add_geom(**geom)
+        return texture_path
 
     def _get_physics(self, obj: MeshObject, mesh_path: Path):
         if obj.collision_size is None:
