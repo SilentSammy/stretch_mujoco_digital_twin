@@ -64,8 +64,8 @@ _ROBOCASA = SimConfig(
     robocasa=RoboCasaConfig(
         enabled=True,
         task="PnPCounterToCab",
-        layout=0,
-        style=0,
+        layout=1,
+        style=1,
     ),
 )
 

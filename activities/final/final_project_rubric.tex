@@ -1,0 +1,230 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{upquote}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{booktabs}
+\usepackage{amssymb}
+\tcbuselibrary{skins}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red},
+    showstringspaces=false
+}
+
+\newtcolorbox{notebox}{colback=blue!5,colframe=blue!40!black,title=Note,fonttitle=\bfseries}
+\newtcolorbox{bonusbox}{colback=green!5,colframe=green!40!black,title=Bonus Opportunity,fonttitle=\bfseries}
+
+\title{\textbf{Final Project --- Stretch Robot Proof of Concept}}
+\author{
+    Robotics and Cyber-Physical Systems \\
+    School of Sciences and Engineering \\
+    Tecnol\'ogico de Monterrey
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Overview}
+
+For the final project, your team will identify a practical use case for the
+Hello Robot Stretch and implement a proof-of-concept demonstration. Your demo
+should provide convincing evidence that the idea is feasible with the robot's
+hardware, sensors, and workspace.
+
+The goal is not a finished production system. A successful project has a
+focused objective, demonstrates meaningful robot behavior, and communicates
+its limitations honestly.
+
+Use the \texttt{stretch\_mujoco\_digital\_twin} simulator as the primary
+development platform. The current API is organized as follows:
+
+\begin{itemize}
+    \item The simulated \texttt{Robot} mirrors the important parts of the
+          physical \texttt{stretch\_body.robot} interface.
+    \item \texttt{stretch\_tools} provides environment-agnostic tools such as
+          normalized velocity control, teleoperation, cameras, state control,
+          transforms, and LiDAR helpers.
+    \item \texttt{sim\_config.py} configures simulator-only details such as
+          objects, RoboCasa, and initial poses.
+\end{itemize}
+
+Keep environment-specific setup separate from the main behavior whenever
+possible. This makes the core script easier to transfer to the physical robot.
+
+\section*{Choosing a Use Case}
+
+Any application that makes genuine use of Stretch's capabilities is
+acceptable. Possible directions include:
+
+\begin{itemize}
+    \item Assistive robotics
+    \item Object detection, manipulation, or sorting
+    \item Inspection and environmental monitoring
+    \item Human--robot interaction
+    \item Autonomous navigation or fetch tasks
+\end{itemize}
+
+Choose a specific, testable objective. ``Retrieve a red object from a table''
+is easier to evaluate than ``build a general-purpose home robot.'' Your scope
+should be ambitious enough to be interesting, but small enough to demonstrate
+reliably within the project timeline.
+
+\section*{Technical Expectations}
+
+The project should combine multiple ideas from the course and include some
+autonomous behavior. Pure teleoperation is not sufficient by itself.
+
+Depending on the use case, relevant components may include:
+
+\begin{itemize}
+    \item Position and velocity commands through the \texttt{Robot} API
+    \item \texttt{NormVelController}, \texttt{StateController}, or
+          \texttt{TeleopProvider}
+    \item RGB or depth-camera perception and visual servoing
+    \item Object localization with \texttt{RobotTransforms}
+    \item LiDAR-based navigation or obstacle avoidance
+    \item Simulator objects or RoboCasa configured through
+          \texttt{sim\_config.py}
+\end{itemize}
+
+You are not required to use every feature. Select the tools that support your
+application and explain your design choices.
+
+\begin{notebox}
+Test incrementally. Keep speeds conservative, enable collision management when
+running on the physical robot, and provide a reliable way to stop autonomous
+motion. A complex demo is not successful if it cannot be operated safely and
+repeatably.
+\end{notebox}
+
+\section*{Recommended Project Structure}
+
+Start from \texttt{stretch\_boilerplate.py} or
+\texttt{teleop\_boilerplate.py}. Use conditional imports so the main script
+can run in either environment when practical:
+
+\begin{lstlisting}[language=Python]
+try:
+    import stretch_body.robot as robot
+except ImportError:
+    import stretch_mujoco_api.robot as robot
+
+from stretch_tools import NormVelController
+\end{lstlisting}
+
+Simulator-only scene choices belong in \texttt{sim\_config.py}, not in the
+portable behavior script. If your project needs custom meshes or textures,
+include those assets and the corresponding configuration with your submission.
+
+\section*{Deliverables}
+
+Every team must submit:
+
+\begin{enumerate}
+    \item \textbf{Source code} --- A working script or small set of scripts
+          that runs in the simulator. Include any required
+          \texttt{sim\_config.py}, custom assets, and brief comments for
+          non-obvious logic. Remove temporary diagnostics and unused code.
+
+    \item \textbf{Written report} (2--3 pages) --- A concise document covering:
+    \begin{itemize}
+        \item The use case and why Stretch is suitable
+        \item The system architecture and control/perception approach
+        \item How the system was tested and what the results show
+        \item Known limitations, safety considerations, and next steps
+        \item Any differences between simulated and physical operation
+    \end{itemize}
+
+    \item \textbf{Video} --- A recording that clearly shows the complete demo
+          running. It may be a screen capture or an edited/narrated video, but
+          it should be understandable without the class presentation.
+\end{enumerate}
+
+\textbf{File naming:}
+\texttt{Team\_[TeamName]\_FinalProject.zip}. Include the source code, report,
+video or video link, configuration, and required assets.
+
+\section*{Presentation}
+
+Each team will give a 10--15 minute presentation, including questions. It
+should contain:
+
+\begin{itemize}
+    \item \textbf{Motivation} --- the problem and intended user
+    \item \textbf{Approach} --- the main perception and control decisions
+    \item \textbf{Demo} --- a live simulator demonstration, with the submitted
+          video available as a fallback
+    \item \textbf{Evaluation} --- what worked, what failed, and what you learned
+    \item \textbf{Q\&A} --- answers that demonstrate understanding of your code
+\end{itemize}
+
+\begin{bonusbox}
+Teams that successfully demonstrate their proof of concept on the
+\textbf{physical Stretch robot} are exempt from the class presentation. All
+three project deliverables are still required.
+
+Arrange a supervised robot session using the instructor's scheduling tool.
+One or two team representatives may attend, and multiple teams may coordinate
+to share a session.
+\end{bonusbox}
+
+\section*{Grading}
+
+The project is graded across four equally weighted areas:
+
+\begin{center}
+\begin{tabular}{llp{8.4cm}}
+\toprule
+\textbf{Area} & \textbf{Weight} & \textbf{What we are looking for} \\
+\midrule
+\textbf{Idea \& Feasibility} & 25\% &
+    The use case fits Stretch, has a clear objective, and is scoped as a
+    credible proof of concept. \\[6pt]
+\textbf{Implementation} & 25\% &
+    The demo works reliably, includes meaningful autonomous behavior, uses
+    appropriate robot capabilities, and is implemented clearly and safely. \\[6pt]
+\textbf{Presentation} & 25\% &
+    The team explains the problem, approach, results, and limitations clearly;
+    the demonstration supports the team's claims. \\[6pt]
+\textbf{Video} & 25\% &
+    The recording clearly shows the complete behavior and can be understood
+    without additional explanation. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{notebox}
+There is no single correct implementation. Grading will consider the ambition
+and difficulty of the selected problem together with the quality and
+reliability of the achieved result.
+\end{notebox}
+
+\section*{Submission Checklist}
+
+Before submitting, verify that:
+
+\begin{itemize}[label=$\square$]
+    \item A fresh checkout can install the dependencies and run the demo.
+    \item All required files and assets use repository-relative paths.
+    \item The simulator configuration needed for the demo is included.
+    \item The robot stops safely when the program exits or loses its target.
+    \item Temporary debug output and unrelated files have been removed.
+    \item The report and video explain the final behavior and its limitations.
+\end{itemize}
+
+\end{document}
